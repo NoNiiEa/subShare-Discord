@@ -6,9 +6,9 @@ import (
 )
 
 func extractNumericCharacters(s string) string {
-	var result strings.Builder // Use strings.Builder for efficient string building
+	var result strings.Builder
 	for _, r := range s {
-		if unicode.IsDigit(r) { // Check if the rune is a digit
+		if unicode.IsDigit(r) {
 			result.WriteRune(r)
 		}
 	}
