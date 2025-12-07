@@ -5,7 +5,7 @@ import {
   Interaction,
   Message
 } from "discord.js";
-import { BackendClient } from "./backendClient.js";
+import { BackendClient } from "./backendClient/index.js";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";

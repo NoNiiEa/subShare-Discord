@@ -1,5 +1,3 @@
-import axios, { AxiosInstance } from "axios";
-
 export interface HealthResponse {
     status: string;
 }
@@ -23,7 +21,7 @@ export interface GroupMember {
   payment_status: string;
 }
 
-export interface CreateGroupResponse {
+export interface GroupResponse {
   id: number;
   name: string;
   amount: number;
@@ -39,24 +37,8 @@ export interface CreateGroupResponse {
   create_at: string;
 }
 
-export class BackendClient {
-    private baseURL: string;
-
-    constructor(baseURL: string) {
-        this.baseURL = baseURL;
-    }
-
-    async health(): Promise<HealthResponse> {
-        const res = await axios.get(`${this.baseURL}/health`);
-        return res.data;
-    }
-
-    async createGroup(payload: CreateGroupRequest): Promise<CreateGroupResponse> {
-        const res = await axios.post<CreateGroupResponse>(
-            `${this.baseURL}/groups`,
-            payload
-        );
-
-        return res.data;
-    }
+export interface InviteGroupRequest {
+    owner_id: string;
+    member_ids: string[];
 }
+

@@ -1,10 +1,9 @@
-// src/commands/create-group.ts
 import {
     SlashCommandBuilder,
     ChatInputCommandInteraction,
     EmbedBuilder,
 } from "discord.js";
-import { BackendClient } from "../backendClient.js";
+import { BackendClient } from "../backendClient/index.js";
 
 export const data = new SlashCommandBuilder()
     .setName("create-group")
