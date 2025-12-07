@@ -4,18 +4,59 @@ export interface HealthResponse {
     status: string;
 }
 
+export interface CreateGroupRequest {
+  name: string;
+  amount: number;
+  due_day: number;
+  discord_guild_id: string;
+  owner_discord_id: string;
+  payment: {
+    method: string;
+    account: string;
+  };
+}
+
+export interface GroupMember {
+  member_id: string;
+  dept: number;
+  status: string;
+  payment_status: string;
+}
+
+export interface CreateGroupResponse {
+  id: number;
+  name: string;
+  amount: number;
+  amount_per_person: number;
+  due_day: number;
+  members: GroupMember[];
+  discord_guild_id: string;
+  owner_discord_id: string;
+  payment: {
+    method: string;
+    account: string;
+  };
+  create_at: string;
+}
+
 export class BackendClient {
-    private http: AxiosInstance;
-    
+    private baseURL: string;
+
     constructor(baseURL: string) {
-        this.http = axios.create({
-            baseURL,
-            timeout: 5000,
-        });
+        this.baseURL = baseURL;
     }
 
     async health(): Promise<HealthResponse> {
-        const res = await this.http.get<HealthResponse>("/health");
+        const res = await axios.get(`${this.baseURL}/health`);
+        return res.data;
+    }
+
+    async createGroup(payload: CreateGroupRequest): Promise<CreateGroupResponse> {
+        const res = await axios.post<CreateGroupResponse>(
+            `${this.baseURL}/groups`,
+            payload
+        );
+
         return res.data;
     }
 }
