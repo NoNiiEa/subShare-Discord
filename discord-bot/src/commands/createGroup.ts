@@ -2,6 +2,7 @@
 import {
     SlashCommandBuilder,
     ChatInputCommandInteraction,
+    EmbedBuilder,
 } from "discord.js";
 import { BackendClient } from "../backendClient.js";
 
@@ -93,19 +94,47 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             timeZone: "Asia/Bangkok",
         });
 
-        await interaction.editReply(
-            [
-                "✅ **Group created successfully!**",
-                `ID: \`${group.id}\``,
-                `Name: **${group.name}**`,
-                `Amount: **${group.amount}** (per person: **${group.amount_per_person}**)`,
-                `Due day: **${group.due_day}**`,
-                `Guild ID: \`${group.discord_guild_id}\``,
-                `Owner: <@${group.owner_discord_id}>`,
-                `Payment: \`${group.payment.method}\` • \`${group.payment.account}\``,
-                `Created at: ${createdAt}`,
-            ].join("\n")
-        );
+        const embed = new EmbedBuilder()
+            .setTitle("✅ Group Created Successfully!")
+            .setDescription(`**${group.name}**`)
+            .setColor(0x57f287) // Discord success green
+            .addFields(
+                {
+                    name: "💰 Amount",
+                    value: `**${group.amount}** (per person: ${group.amount_per_person})`,
+                    inline: true,
+                },
+                {
+                name: "📅 Due Day",
+                value: `**${group.due_day}**`,
+                inline: true,
+                },
+                {
+                name: "👑 Owner",
+                value: `<@${group.owner_discord_id}>`,
+                inline: true,
+                },
+                {
+                name: "🏦 Payment",
+                value: `**${group.payment.method}** → \`${group.payment.account}\``,
+                inline: false,
+                },
+                {
+                name: "🆔 Group ID",
+                value: `\`${group.id}\``,
+                inline: true,
+                },
+                {
+                name: "🕒 Created At",
+                value: createdAt,
+                inline: true,
+                }
+            )
+            .setFooter({
+                text: `Guild: ${group.discord_guild_id}`,
+            });
+
+        await interaction.editReply({ embeds: [embed] });
     } catch (err: any) {
         console.error("create-group error:", err?.response?.data ?? err);
 
