@@ -14,6 +14,7 @@ type Store interface {
 	DeleteGroup(ctx context.Context, id int64) error
 	UpdateGroup(ctx context.Context, id int64, g Group) error
 	GetGroupByDueday(ctx context.Context, dueDay int) ([]Group, error)
+	GetGroupByMemberIdAndGuildId(ctx context.Context, memberID string, guildID string) ([]Group, error)
 	NextBillID(ctx context.Context) (int64, error)
 	SaveBill(ctx context.Context, b bill.Bill) error
 	GetBillByID(ctx context.Context, id int64) (*bill.Bill, error)
@@ -325,4 +326,8 @@ func (s *Service) MarkMemberPaid(ctx context.Context, req MarkAsPaidRequest, gro
 	}
 
 	return &g.Members[index], nil
+}
+
+func (s *Service) GetGroupByMemberIdAndGuildId(ctx context.Context, memberID string, guildID string) ([]Group, error) {
+	return s.store.GetGroupByMemberIdAndGuildId(ctx, memberID, guildID)
 }

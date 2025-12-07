@@ -847,3 +847,80 @@ WHERE id = ?;
 
 	return &b, nil
 }
+
+func (s *SQLiteStore) GetGroupByMemberIdAndGuildId(ctx context.Context, memberID string, guildID string) ([]group.Group, error) {
+	const q = `
+	SELECT 
+	id,
+    name,
+    amount,
+    amount_per_member,
+    due_day,
+    members_json,
+    discord_guild_id,
+    owner_discord_id,
+    payment,
+    created_at
+	FROM groups
+	WHERE discord_guild_id = ?;
+	`
+
+	rows, err := s.db.QueryContext(ctx, q, guildID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []group.Group
+
+	for rows.Next() {
+		var (
+			g group.Group
+			membersJSON string
+			paymentJSON string
+			createAtStr string
+		)
+
+		if err := rows.Scan(
+			&g.ID,
+			&g.Name,
+			&g.Amount,
+			&g.AmountPerMember,
+			&g.DueDay,
+			&membersJSON,
+			&g.OwnerDiscordID,
+			&g.DiscordGuildID,
+			&paymentJSON,
+			&createAtStr,
+		); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(membersJSON), &g.Members); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(paymentJSON), &g.Payment); err != nil {
+			return nil, err
+		}
+
+		t, err := time.Parse(time.RFC3339, createAtStr)
+		if err != nil {
+			return nil, err
+		}
+		g.CreateAt = t
+
+		for _, m := range g.Members {
+			if m.MemberID == memberID {
+				result = append(result, g)
+				break
+			}
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
