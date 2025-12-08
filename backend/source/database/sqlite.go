@@ -888,8 +888,8 @@ func (s *SQLiteStore) GetGroupByMemberIdAndGuildId(ctx context.Context, memberID
 			&g.AmountPerMember,
 			&g.DueDay,
 			&membersJSON,
-			&g.OwnerDiscordID,
 			&g.DiscordGuildID,
+			&g.OwnerDiscordID,
 			&paymentJSON,
 			&createAtStr,
 		); err != nil {

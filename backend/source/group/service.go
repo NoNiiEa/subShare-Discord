@@ -331,3 +331,20 @@ func (s *Service) MarkMemberPaid(ctx context.Context, req MarkAsPaidRequest, gro
 func (s *Service) GetGroupByMemberIdAndGuildId(ctx context.Context, memberID string, guildID string) ([]Group, error) {
 	return s.store.GetGroupByMemberIdAndGuildId(ctx, memberID, guildID)
 }
+
+func (s *Service) GetOwnerGroupByMemberAndGuild(ctx context.Context, memberId string, guildId string) ([]Group, error) {
+	groups, err := s.store.GetGroupByMemberIdAndGuildId(ctx, memberId, guildId)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []Group
+
+	for _, g := range groups {
+		if g.OwnerDiscordID == memberId {
+			result = append(result, g)
+		}
+	}
+
+	return result, nil
+}
