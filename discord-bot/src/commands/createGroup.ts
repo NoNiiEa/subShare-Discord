@@ -2,6 +2,7 @@ import {
     SlashCommandBuilder,
     ChatInputCommandInteraction,
     EmbedBuilder,
+    MessageFlags
 } from "discord.js";
 import { BackendClient } from "../backendClient/index.js";
 
@@ -74,7 +75,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const backend = new BackendClient(backendBaseUrl);
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({
+        flags: MessageFlags.Ephemeral,
+    });
+
 
     try {
         const group = await backend.createGroup({

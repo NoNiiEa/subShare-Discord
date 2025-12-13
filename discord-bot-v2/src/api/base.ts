@@ -1,0 +1,47 @@
+import { BackendConfig } from "./types";
+
+export class BaseAPI {
+  private baseUrl: string;
+  private apiKey?: string;
+
+  constructor(config: BackendConfig) {
+    this.baseUrl = config.baseUrl;
+    this.apiKey = config.apiKey;
+  }
+
+  protected async request<T>(
+    endpoint: string,
+    method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
+    body?: unknown
+  ): Promise<T> {
+    const url = `${this.baseUrl}${endpoint}`;
+    
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+
+    if (this.apiKey) {
+      headers["Authorization"] = `Bearer ${this.apiKey}`;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(
+          `API Error [${response.status}]: ${errorBody?.message || response.statusText}`
+        );
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+        console.error(`[BackendClient] Request failed: ${url}`, error);
+        throw error;
+    }
+  }
+}

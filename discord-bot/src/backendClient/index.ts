@@ -35,4 +35,12 @@ export class BackendClient {
 
         return res.data
     }
+
+    async viewGroups(memberId: string, guildId: string): Promise<GroupResponse[]> {
+        const res = await axios.get<GroupResponse[]>(
+            `${this.baseURL}/member/${memberId}/guild/${guildId}/groups`
+        );
+
+        return res.data
+    }
 }
