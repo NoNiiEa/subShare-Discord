@@ -442,6 +442,28 @@ func (s *Server) handleGetOwnGroups(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, groups)
 }
 
+func (s *Server) handleGetPendingInvite(w http.ResponseWriter, r *http.Request) {
+	memberID := chi.URLParam(r, "memberID")
+	if len(memberID) == 0 {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	guildID := chi.URLParam(r, "guildID")
+	if len(guildID) == 0 {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	groups, err := s.groupSvc.GetPendingInvite(r.Context(), memberID, guildID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, groups)
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }
@@ -464,6 +486,7 @@ func (s *Server) routes() {
 		r.Get("/{id}/bill", s.handleGetBillsByMemberID)
 		r.Get("/{memberID}/guild/{guildID}/groups", s.handleGetGroupByMemberIdAndGuildId)
 		r.Get("/{memberID}/guild/{guildID}/own-groups", s.handleGetOwnGroups)
+		r.Get("/{memberID}/guild/{guildID}/pending-invite", s.handleGetPendingInvite)
 	})
 
 	s.router.Route("/test", func(r chi.Router) {

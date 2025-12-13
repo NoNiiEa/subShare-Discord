@@ -348,3 +348,23 @@ func (s *Service) GetOwnerGroupByMemberAndGuild(ctx context.Context, memberId st
 
 	return result, nil
 }
+
+func (s *Service) GetPendingInvite(ctx context.Context, memberId string, guildId string) ([]Group, error) {
+	groups, err := s.store.GetGroupByMemberIdAndGuildId(ctx, memberId, guildId)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []Group
+
+	for _, g := range groups {
+		for _, member := range g.Members {
+			if (member.MemberID == memberId && member.Status == MemberStatusInvited) {
+				result = append(result, g)
+				break
+			}
+		}
+	}
+
+	return result, nil
+}
