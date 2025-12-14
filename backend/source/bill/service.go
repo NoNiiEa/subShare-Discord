@@ -92,3 +92,4 @@ func (s *Service) GetBillsByGroup(ctx context.Context, groupID int64) ([]Bill, e
 func (s *Service) GetBillsByMember(ctx context.Context, memberID string) ([]Bill, error) {
 	return s.store.GetBillsByMemberID(ctx, memberID)
 }
+

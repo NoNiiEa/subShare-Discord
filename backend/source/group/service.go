@@ -224,6 +224,33 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, id 
 	return g, nil
 }
 
+func (s *Service) DeclineInvite(ctx context.Context, req DeclineInviteRequest, id int64) (*Group, error) {
+	g, err := s.GetGroup(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	var index = -1
+	for i, member := range g.Members {
+		if member.MemberID == req.UserID && member.Status == MemberStatusInvited {
+			index = i
+			break
+		}
+	}
+
+	if index == -1 {
+		return nil, ErrNotInvited
+	}
+
+	g.Members[index].Status = MemberStatusLeft
+
+	if err := s.store.UpdateGroup(ctx, id, *g); err != nil {
+		return nil, err
+	}
+
+	return g, nil
+}
+
 func (s *Service) ResetPaymentForDueday(ctx context.Context, dueDay int) error {
 	if dueDay < 1 || dueDay > 31 {
 		return ErrInvalidDueDay

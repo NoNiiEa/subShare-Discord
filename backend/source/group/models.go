@@ -73,6 +73,10 @@ type AcceptInviteRequest struct {
 	UserID string `json:"user_id"`
 }
 
+type DeclineInviteRequest struct {
+	UserID string `json:"user_id"`
+}
+
 type MarkAsPaidRequest struct {
 	Amount int64 `json:"amount"`
 }

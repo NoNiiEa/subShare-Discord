@@ -464,6 +464,34 @@ func (s *Server) handleGetPendingInvite(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, groups)
 }
 
+func (s *Server) handleDeclineInvite(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id <= 0{
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var req group.DeclineInviteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	g, err := s.groupSvc.DeclineInvite(r.Context(), req, id)
+	if err != nil {
+		if errors.Is(err, group.ErrNotInvited) {
+			http.Error(w, "user is not invited or is already a member.", http.StatusBadRequest)
+			return
+		}
+
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, g)
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }
@@ -478,6 +506,7 @@ func (s *Server) routes() {
 		r.Put("/{id}", s.handleUpdateGroup)
 		r.Post("/{id}/invite", s.handleInviteGroup)
 		r.Post("/{id}/accept-invite", s.handleAcceptInvite)
+		r.Post("/{id}/decline-invite", s.handleDeclineInvite)
 		r.Post("/{GroupID}/member/{MemberID}/pay", s.handleMarkAsPaid)
 		r.Get("/{id}/bill", s.handleGetBillByGroupID)
 	})
