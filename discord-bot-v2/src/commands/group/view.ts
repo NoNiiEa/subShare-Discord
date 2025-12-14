@@ -1,6 +1,6 @@
 import { ChatInputCommandInteraction, MessageFlags, EmbedBuilder, } from "discord.js";
-import { BackendClient } from "../../api";
-import { config } from "../../config";
+import { BackendClient } from "../../api/index.js";
+import { config } from "../../config.js";
 
 export async function executeView(interaction: ChatInputCommandInteraction) {
     const userId = interaction.user.id

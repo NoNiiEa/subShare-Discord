@@ -4,8 +4,8 @@ import {
     EmbedBuilder,
     MessageFlags
 } from "discord.js";
-import { BackendClient } from "../../api";
-import { config } from "../../config";
+import { BackendClient } from "../../api/index.js";
+import { config } from "../../config.js";
 
 export default {
     data: new SlashCommandBuilder()

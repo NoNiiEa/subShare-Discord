@@ -1,5 +1,5 @@
-import { BaseAPI } from "../base";
-import { HealthResponse } from "../types";
+import { BaseAPI } from "../base.js";
+import { HealthResponse } from "../types.js";
 
 export class Health extends BaseAPI {
     

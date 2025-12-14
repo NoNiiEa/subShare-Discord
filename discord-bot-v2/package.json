@@ -8,7 +8,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "build": "tsup src/index.ts --format esm --clean --minify",
+    "build": "tsc",
     "register": "tsx src/register.ts"
   },
   "author": "",

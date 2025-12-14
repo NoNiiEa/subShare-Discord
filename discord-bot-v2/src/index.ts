@@ -3,8 +3,8 @@ import {
     Events, 
     GatewayIntentBits
 } from "discord.js"
-import { config } from "./config"
-import { setupCommandHandler } from "./handler/commadHandler"
+import { config } from "./config.js"
+import { setupCommandHandler } from "./handler/commadHandler.js"
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 

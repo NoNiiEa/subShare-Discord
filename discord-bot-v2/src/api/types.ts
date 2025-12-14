@@ -46,3 +46,7 @@ export interface InviteMemberRequest {
     owner_id: string
     member_ids: string[]
 }
+
+export interface AcceptInviteRequest {
+  user_id: string
+}

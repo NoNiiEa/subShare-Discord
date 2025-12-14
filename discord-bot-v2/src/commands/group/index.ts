@@ -4,9 +4,10 @@ import {
     EmbedBuilder,
     MessageFlags
 } from "discord.js";
-import { executeCreate } from "./create";
-import { executeView } from "./view";
-import { executeInvite } from "./invite";
+import { executeCreate } from "./create.js";
+import { executeView } from "./view.js";
+import { executeInvite } from "./invite.js";
+import { executeAccept } from "./accept.js";
 
 export default {
     data: new SlashCommandBuilder()
@@ -70,6 +71,11 @@ export default {
                         .setDescription("the person you want to invite")
                         .setRequired(true)
                 )
+        )
+        .addSubcommand((subcommand) => 
+            subcommand
+                .setName("accept")
+                .setDescription("accept invite to a group")
         ),
 
     async execute(interaction: ChatInputCommandInteraction) {
@@ -84,6 +90,9 @@ export default {
                 break;
             case "invite":
                 await executeInvite(interaction);
+                break;
+            case "accept":
+                await executeAccept(interaction);
                 break;
         }
     }

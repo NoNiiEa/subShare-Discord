@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { REST, Routes, SlashCommandBuilder } from 'discord.js';
-import { config } from './config';
+import { config } from './config.js';
 
 interface SlashCommandFile {
   data: SlashCommandBuilder;

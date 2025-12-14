@@ -6,8 +6,8 @@ import {
     ComponentType,
     MessageFlags
 } from "discord.js";
-import { BackendClient } from "../../api";
-import { config } from "../../config";
+import { BackendClient } from "../../api/index.js";
+import { config } from "../../config.js";
 
 export async function executeInvite(interaction: ChatInputCommandInteraction) {
     const targetUser = interaction.options.getUser("invite-user", true);

@@ -1,7 +1,7 @@
 // src/api/index.ts
-import { BackendConfig } from "./types";
-import { Health } from "./routes/health";
-import { Group } from "./routes/group";
+import { BackendConfig } from "./types.js";
+import { Health } from "./routes/health.js";
+import { Group } from "./routes/group.js";
 
 export class BackendClient {
   public health: Health;

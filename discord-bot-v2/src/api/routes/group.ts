@@ -1,5 +1,5 @@
-import { CreateGroupRequest, GroupResponse, InviteMemberRequest } from "../types";
-import { BaseAPI } from "../base";
+import { CreateGroupRequest, GroupResponse, InviteMemberRequest, AcceptInviteRequest } from "../types.js";
+import { BaseAPI } from "../base.js";
 
 export class Group extends BaseAPI {
 
@@ -17,5 +17,17 @@ export class Group extends BaseAPI {
 
     async viewOwn(userId: string, guildId: string): Promise<GroupResponse[]> {
         return await this.request<GroupResponse[]>(`/member/${userId}/guild/${guildId}/own-groups`)
+    }
+
+    async pendingInvite(userId: string, guildId: string): Promise<GroupResponse[]> {
+        return await this.request<GroupResponse[]>(`/member/${userId}/guild/${guildId}/pending-invite`)
+    }
+
+    async acceptInvite(payload: AcceptInviteRequest, groupId: number): Promise<GroupResponse> {
+        return await this.request<GroupResponse>(`/groups/${groupId}/accept-invite`, "POST", payload);
+    }
+
+    async DeclineInvite(payload: AcceptInviteRequest, groupId: number): Promise<GroupResponse> {
+        return await this.request<GroupResponse>(`/groups/${groupId}/decline-invite`, "POST", payload);
     }
 }

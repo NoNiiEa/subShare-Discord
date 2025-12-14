@@ -1,4 +1,4 @@
-import { BackendConfig } from "./types";
+import { BackendConfig } from "./types.js";
 
 export class BaseAPI {
   private baseUrl: string;
