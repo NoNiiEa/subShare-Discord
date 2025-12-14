@@ -2,6 +2,7 @@ package group
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/NoNiiEa/subShare-Discord/source/bill"
@@ -22,6 +23,8 @@ type Store interface {
 	GetBillByGroupMemberCycle(ctx context.Context, groupID int64, memberID string, year, month int) (*bill.Bill, error)
 	GetBillsByMemberID(ctx context.Context, memberID string) ([]bill.Bill, error)
 	GetBillsByGroupID(ctx context.Context, groupID int64) ([]bill.Bill, error)
+	GetUnpaidBill(ctx context.Context) ([]bill.Bill, error)
+	GetGroupByGuildId(ctx context.Context, guildId string) ([]Group, error) 
 }
 
 type Service struct {
@@ -394,4 +397,31 @@ func (s *Service) GetPendingInvite(ctx context.Context, memberId string, guildId
 	}
 
 	return result, nil
+}
+
+func (s *Service) GetUnpaidBillByGuildId(ctx context.Context, guildId string) ([]bill.Bill, error) {
+	bills, err := s.store.GetUnpaidBill(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	groups, err := s.store.GetGroupByGuildId(ctx, guildId)
+	if err != nil {
+		return nil, err
+	}
+
+	var g_id []int64
+
+	for _, g := range(groups) {
+		g_id = append(g_id, g.ID)
+	}
+
+	var res []bill.Bill
+	for _, b := range(bills) {
+		if slices.Contains(g_id, b.GroupID) {
+			res = append(res, b)
+		}
+	}
+
+	return res, nil
 }

@@ -7,6 +7,10 @@ export class Group extends BaseAPI {
         return await this.request<GroupResponse>(`/groups`, "POST", payload);
     }
 
+    async get(groupId: number): Promise<GroupResponse> {
+        return await this.request<GroupResponse>(`/groups/${groupId}`);
+    }
+
     async view(userId: string, guildId: string): Promise<GroupResponse[]> {
         return await this.request<GroupResponse[]>(`/member/${userId}/guild/${guildId}/groups`)
     }

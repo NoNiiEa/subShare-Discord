@@ -924,3 +924,158 @@ func (s *SQLiteStore) GetGroupByMemberIdAndGuildId(ctx context.Context, memberID
 
 	return result, nil
 }
+
+func (s *SQLiteStore) GetGroupByGuildId(ctx context.Context, guildId string) ([]group.Group, error) {
+		const q = `
+	SELECT 
+	id,
+    name,
+    amount,
+    amount_per_member,
+    due_day,
+    members_json,
+    discord_guild_id,
+    owner_discord_id,
+    payment,
+    created_at
+	FROM groups
+	WHERE discord_guild_id = ?;
+	`
+
+	rows, err := s.db.QueryContext(ctx, q, guildId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []group.Group
+
+	for rows.Next() {
+		var (
+			g group.Group
+			membersJSON string
+			paymentJSON string
+			createAtStr string
+		)
+
+		if err := rows.Scan(
+			&g.ID,
+			&g.Name,
+			&g.Amount,
+			&g.AmountPerMember,
+			&g.DueDay,
+			&membersJSON,
+			&g.DiscordGuildID,
+			&g.OwnerDiscordID,
+			&paymentJSON,
+			&createAtStr,
+		); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(membersJSON), &g.Members); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(paymentJSON), &g.Payment); err != nil {
+			return nil, err
+		}
+
+		t, err := time.Parse(time.RFC3339, createAtStr)
+		if err != nil {
+			return nil, err
+		}
+		g.CreateAt = t
+
+		result = append(result, g)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (s *SQLiteStore) GetUnpaidBill(ctx context.Context) ([]bill.Bill, error) {
+	const q = `
+SELECT
+    id,
+    group_id,
+    member_id,
+    year,
+    month,
+    amount_due,
+    amount_paid,
+    currency,
+    status,
+    description,
+    proof_json,
+    created_at,
+    updated_at,
+    submitted_at,
+    verified_at,
+    rejected_at
+FROM bills
+WHERE status = "submitted"
+ORDER BY year DESC, month DESC, member_id ASC;`
+
+	rows, err := s.db.QueryContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []bill.Bill
+
+	for rows.Next() {
+		var b bill.Bill
+		var createdAt, updatedAt string
+		var submittedAt, verifiedAt, rejectedAt *string
+
+		if err := rows.Scan(
+			&b.ID,
+			&b.GroupID,
+			&b.MemberID,
+			&b.Year,
+			&b.Month,
+			&b.AmountDue,
+			&b.AmountPaid,
+			&b.Currency,
+			&b.Status,
+			&b.Description,
+			&b.ProofJSON,
+			&createdAt,
+			&updatedAt,
+			&submittedAt,
+			&verifiedAt,
+			&rejectedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		b.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		b.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+
+		if submittedAt != nil {
+			t, _ := time.Parse(time.RFC3339, *submittedAt)
+			b.SubmittedAt = &t
+		}
+		if verifiedAt != nil {
+			t, _ := time.Parse(time.RFC3339, *verifiedAt)
+			b.VerifiedAt = &t
+		}
+		if rejectedAt != nil {
+			t, _ := time.Parse(time.RFC3339, *rejectedAt)
+			b.RejectedAt = &t
+		}
+
+		result = append(result, b)
+	}
+
+	if len(result) == 0 {
+		return nil, ErrNotFound
+	}
+
+	return result, nil
+}

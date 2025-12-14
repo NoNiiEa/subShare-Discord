@@ -50,3 +50,34 @@ export interface InviteMemberRequest {
 export interface AcceptInviteRequest {
   user_id: string
 }
+
+export enum BillStatus {
+    PENDING = "pending",
+    SUBMITTED = "submitted",
+    VERIFIED = "verified",
+    REJECTED = "rejected"
+}
+
+export interface BillResponse {
+    id: number;
+    
+    group_id: number;
+    member_id: string;
+
+    year: number;
+    month: number;
+
+    amount_due: number;
+    amount_paid: number;
+    currency: string;
+    status: BillStatus | string; 
+    description?: string; 
+
+    proof?: Record<string, any> | null; 
+
+    created_at: string;
+    updated_at: string;
+    submitted_at?: string | null;
+    verified_at?: string | null;
+    rejected_at?: string | null;
+}

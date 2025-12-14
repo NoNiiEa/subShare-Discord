@@ -15,9 +15,11 @@
   "license": "ISC",
   "dependencies": {
     "discord.js": "^14.25.1",
-    "dotenv": "^17.2.3"
+    "dotenv": "^17.2.3",
+    "node-cron": "^4.2.1"
   },
   "devDependencies": {
+    "@types/node-cron": "^3.0.11",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"

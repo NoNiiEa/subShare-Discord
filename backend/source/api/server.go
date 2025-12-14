@@ -492,6 +492,23 @@ func (s *Server) handleDeclineInvite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, g)
 }
 
+func (s *Server) handleGetUnpaidBillByGuildId(w http.ResponseWriter, r *http.Request) {
+	guildID := chi.URLParam(r, "guildID")
+	if len(guildID) == 0 {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	bills, err := s.groupSvc.GetUnpaidBillByGuildId(r.Context(), guildID)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, bills)
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }
@@ -516,6 +533,10 @@ func (s *Server) routes() {
 		r.Get("/{memberID}/guild/{guildID}/groups", s.handleGetGroupByMemberIdAndGuildId)
 		r.Get("/{memberID}/guild/{guildID}/own-groups", s.handleGetOwnGroups)
 		r.Get("/{memberID}/guild/{guildID}/pending-invite", s.handleGetPendingInvite)
+	})
+
+	s.router.Route("/guild", func(r chi.Router)  {
+		r.Get("/{guildID}/bills", s.handleGetUnpaidBillByGuildId)
 	})
 
 	s.router.Route("/test", func(r chi.Router) {
