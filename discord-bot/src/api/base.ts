@@ -2,7 +2,7 @@ import { BackendConfig } from "./types.js";
 
 export class BaseAPI {
   private baseUrl: string;
-  private apiKey?: string;
+  private apiKey: string;
 
   constructor(config: BackendConfig) {
     this.baseUrl = config.baseUrl;
@@ -33,9 +33,16 @@ export class BaseAPI {
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null);
-        throw new Error(
-          `API Error [${response.status}]: ${errorBody?.message || response.statusText}`
+        const error: any = new Error(
+          `API Error [${response.status}]: ${errorBody?.error || errorBody?.message || response.statusText}`
         );
+        // Attach response data for better error handling
+        error.response = {
+          status: response.status,
+          statusText: response.statusText,
+          data: errorBody
+        };
+        throw error;
       }
 
       return (await response.json()) as T;

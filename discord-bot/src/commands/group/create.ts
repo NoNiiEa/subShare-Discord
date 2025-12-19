@@ -21,6 +21,7 @@ export async function executeCreate(interaction: ChatInputCommandInteraction) {
 
     const backend = new BackendClient({
         baseUrl: config.BACKEND_BASE_URL || "http://localhost:8000",
+        apiKey: config.BACKEND_API_KEY
     });
 
     await interaction.deferReply({
@@ -44,6 +45,13 @@ export async function executeCreate(interaction: ChatInputCommandInteraction) {
             timeZone: "Asia/Bangkok",
         });
 
+        // Format payment method: show PromptPay instead of MSISDN
+        const methodLower = (group.payment.method || '').toLowerCase();
+        let displayMethod = group.payment.method || 'N/A';
+        if (methodLower === 'msisdn') displayMethod = 'PromptPay';
+        else if (methodLower === 'promptpay') displayMethod = 'PromptPay';
+        else if (methodLower === 'bank_account' || methodLower === 'bank' || methodLower === 'bankac') displayMethod = 'Bank';
+
         const embed = new EmbedBuilder()
             .setTitle("✅ Group Created Successfully!")
             .setDescription(`**${group.name}**`)
@@ -66,7 +74,7 @@ export async function executeCreate(interaction: ChatInputCommandInteraction) {
                 },
                 {
                 name: "Payment",
-                value: `**${group.payment.method}** → \`${group.payment.account}\``,
+                value: `**${displayMethod}** → \`${group.payment.account}\``,
                 inline: false,
                 },
                 {

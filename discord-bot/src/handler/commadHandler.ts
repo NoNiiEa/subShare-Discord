@@ -6,6 +6,7 @@ import {
   Client,
   Interaction,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   SlashCommandBuilder,
 } from "discord.js";
 
@@ -13,6 +14,9 @@ export interface SlashCommand {
   data: SlashCommandBuilder;
   execute: (
     interaction: ChatInputCommandInteraction
+  ) => Promise<unknown> | unknown;
+  autocomplete?: (
+    interaction: AutocompleteInteraction
   ) => Promise<unknown> | unknown;
 }
 
@@ -24,6 +28,28 @@ export async function setupCommandHandler(client: Client) {
   const commands = await loadCommands(commandsDir);
 
   client.on("interactionCreate", async (interaction: Interaction) => {
+    // Handle Autocomplete Interactions
+    if (interaction.isAutocomplete()) {
+      const command = commands.get(interaction.commandName);
+      if (!command || !command.autocomplete) return;
+
+      try {
+        await command.autocomplete(interaction);
+      } catch (error) {
+        console.error(`Error handling autocomplete for /${interaction.commandName}`, error);
+        // Try to respond with empty array if not already responded
+        if (!interaction.responded) {
+          try {
+            await interaction.respond([]);
+          } catch (err) {
+            // Ignore if already responded or interaction expired
+          }
+        }
+      }
+      return;
+    }
+
+    // Handle Chat Input Command Interactions
     if (!interaction.isChatInputCommand()) return;
 
     const command = commands.get(interaction.commandName);

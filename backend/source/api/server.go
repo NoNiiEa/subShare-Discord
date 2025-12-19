@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 
@@ -305,99 +304,6 @@ func (s *Server) handleGetBillsByMemberID(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, bills)
 }
 
-func (s *Server) handleSubmitBill(w http.ResponseWriter, r *http.Request) {
-	// 1) Parse bill ID from URL
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil || id <= 0 {
-		http.Error(w, "invalid id", http.StatusBadRequest)
-		return
-	}
-
-	// 2) Parse multipart form (for file upload)
-	if err := r.ParseMultipartForm(20 << 20); err != nil { // 20 MB
-		http.Error(w, "invalid form data: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// 3) member_id (required)
-	memberID := r.FormValue("member_id")
-	if memberID == "" {
-		http.Error(w, "member_id is required", http.StatusBadRequest)
-		return
-	}
-
-	// 4) amount_paid (optional)
-	var amountPaid float64
-	amountStr := r.FormValue("amount_paid")
-	if amountStr != "" {
-		amountPaid, err = strconv.ParseFloat(amountStr, 64)
-		if err != nil {
-			http.Error(w, "invalid amount_paid", http.StatusBadRequest)
-			return
-		}
-	}
-
-	// 5) Get file
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "file is required", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	fileBytes, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, "could not read file", http.StatusInternalServerError)
-		return
-	}
-
-	// 6) Build request for service
-	req := billver.SubmitBillProofRequest{
-		BillID:     id,
-		MemberID:   memberID,
-		AmountPaid: amountPaid,
-		ImageBytes: fileBytes,
-		FileName:   header.Filename,
-	}
-
-	// 7) Call service
-	b, _, err := s.billVerSvc.SubmitBillProof(r.Context(), req)
-	if err != nil {
-		// you can handle specific errors here (not invited, bill not found, verification failed, etc.)
-		fmt.Println("SubmitBillProof error:", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	markReq := group.MarkAsPaidRequest{
-		Amount: int64(b.AmountPaid),
-	}
-	_, err = s.groupSvc.MarkMemberPaid(r.Context(), markReq, b.GroupID, b.MemberID)
-	if err != nil {
-		if errors.Is(err, group.ErrInvalidGroupID) || errors.Is(err, group.ErrNoUserID) {
-			http.Error(w, "invalid group_id or user_id", http.StatusBadRequest)
-			return
-		}
-
-		if errors.Is(err, group.ErrMemberNotFound) || errors.Is(err, group.ErrNotActiveMember) {
-			http.Error(w, "member not found in group", http.StatusNotFound)
-			return
-		}
-
-		if errors.Is(err, group.ErrAlreadyPaid) {
-			http.Error(w, "member already paid", http.StatusBadRequest)
-			return
-		}
-
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	// 8) Return updated bill as JSON
-	writeJSON(w, http.StatusOK, b)
-}
-
 func (s *Server) handleGetGroupByMemberIdAndGuildId(w http.ResponseWriter, r *http.Request) {
 	memberID := chi.URLParam(r, "memberID")
 	if len(memberID) == 0 {
@@ -509,6 +415,29 @@ func (s *Server) handleGetUnpaidBillByGuildId(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, bills)
 }
 
+func (s *Server) handleGetUnpaidBillByGuildIdAndUserId(w http.ResponseWriter, r *http.Request) {
+	guildID := chi.URLParam(r, "guildID")
+	if len(guildID) == 0 {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	memberID := chi.URLParam(r, "memberID")
+	if len(memberID) == 0 {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	bills, err := s.groupSvc.GetUnpaidBillByGuildIdAndUserId(r.Context(), guildID, memberID)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, bills)
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }
@@ -533,6 +462,7 @@ func (s *Server) routes() {
 		r.Get("/{memberID}/guild/{guildID}/groups", s.handleGetGroupByMemberIdAndGuildId)
 		r.Get("/{memberID}/guild/{guildID}/own-groups", s.handleGetOwnGroups)
 		r.Get("/{memberID}/guild/{guildID}/pending-invite", s.handleGetPendingInvite)
+		r.Get("/{memberID}/guild/{guildID}/bills", s.handleGetUnpaidBillByGuildIdAndUserId)
 	})
 
 	s.router.Route("/guild", func(r chi.Router)  {
@@ -541,10 +471,6 @@ func (s *Server) routes() {
 
 	s.router.Route("/test", func(r chi.Router) {
 		r.Post("/due-day/{DueDay}", s.handleResetPayment)
-	})
-
-	s.router.Route("/bill", func(r chi.Router) {
-		r.Post("/{id}/pay", s.handleSubmitBill)
 	})
 }
 

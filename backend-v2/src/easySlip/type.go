@@ -1,18 +1,6 @@
-package billver
+package easyslip
 
-import (
-	"github.com/NoNiiEa/subShare-Discord/source/group"
-)
-
-type SlipVerificationResult struct {
-	IsValid bool `json:"is_valid"`
-	MatchedAmount float64 `json:"matched_amount"`
-	Method group.PaymentMethod `json:"method"`
-	Account string `json:"account"`
-	RawResponse []byte `json:"raw_response"`
-}
-
-type easySlipResponse struct {
+type EasySlipResponse struct {
 	Status int `json:"status"`
 	Data   struct {
 		Payload     string `json:"payload"`
@@ -86,9 +74,7 @@ type easySlipResponse struct {
 	} `json:"data"`
 }
 
-type SubmitBillProofRequest struct {
-	BillID     int64   `json:"bill_id"`
-	MemberID   string  `json:"member_id"`
-	ImageBytes []byte  `json:"-"`
-	FileName   string  `json:"-"` // "slip.jpg"
+type CheckSlipRequest struct {
+	Url string `json:"url"`
+	CheckDuplicate bool `json:"checkDuplicate"`
 }

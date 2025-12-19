@@ -4,7 +4,7 @@ export interface HealthResponse {
 
 export interface BackendConfig {
   baseUrl: string;
-  apiKey?: string;
+  apiKey: string;
 }
 
 export interface CreateGroupRequest {
@@ -68,7 +68,6 @@ export interface BillResponse {
     month: number;
 
     amount_due: number;
-    amount_paid: number;
     currency: string;
     status: BillStatus | string; 
     description?: string; 
@@ -80,4 +79,11 @@ export interface BillResponse {
     submitted_at?: string | null;
     verified_at?: string | null;
     rejected_at?: string | null;
+}
+
+export interface PayRequest {
+    user_id: string;
+    guild_id: string;
+    bill_id: number; // Backend expects int, not string
+    proof_url: string;
 }

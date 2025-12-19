@@ -24,6 +24,7 @@ export async function executeAccept(interaction: ChatInputCommandInteraction) {
 
     const backend = new BackendClient({
         baseUrl: config.BACKEND_BASE_URL || "http://localhost:8000",
+        apiKey: config.BACKEND_API_KEY
     });
 
     try {

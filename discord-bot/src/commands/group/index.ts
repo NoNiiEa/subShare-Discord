@@ -1,11 +1,12 @@
 import {
     SlashCommandBuilder,
     ChatInputCommandInteraction,
+    AutocompleteInteraction,
     EmbedBuilder,
     MessageFlags
 } from "discord.js";
 import { executeCreate } from "./create.js";
-import { executeView } from "./view.js";
+import { executeView, autocompleteView } from "./view.js";
 import { executeInvite } from "./invite.js";
 import { executeAccept } from "./accept.js";
 
@@ -46,7 +47,7 @@ export default {
                         .setRequired(true)
                         .addChoices(
                             { name: "Bank account", value: "BANKAC" },
-                            { name: "PromptPay (MSISDN)", value: "MSISDN" },
+                            { name: "PromptPay", value: "MSISDN" },
                         )
                 )
                 .addStringOption((option) =>
@@ -60,6 +61,13 @@ export default {
             subcommand
                 .setName("view")
                 .setDescription("view my group")
+                .addStringOption((option) =>
+                    option
+                        .setName("group")
+                        .setDescription("Select a specific group to view details (optional)")
+                        .setRequired(false)
+                        .setAutocomplete(true)
+                )
         )
         .addSubcommand((subcommand) => 
             subcommand
@@ -93,6 +101,16 @@ export default {
                 break;
             case "accept":
                 await executeAccept(interaction);
+                break;
+        }
+    },
+
+    async autocomplete(interaction: AutocompleteInteraction) {
+        const subcommand = interaction.options.getSubcommand();
+
+        switch (subcommand) {
+            case "view":
+                await autocompleteView(interaction);
                 break;
         }
     }

@@ -425,3 +425,20 @@ func (s *Service) GetUnpaidBillByGuildId(ctx context.Context, guildId string) ([
 
 	return res, nil
 }
+
+func (s *Service) GetUnpaidBillByGuildIdAndUserId(ctx context.Context, guildId string, userId string) ([]bill.Bill, error) {
+	bills, err := s.GetUnpaidBillByGuildId(ctx, guildId)
+	if err != nil {
+		return nil, err
+	}
+
+	var res []bill.Bill
+
+	for _, b := range(bills) {
+		if b.MemberID == userId {
+			res = append(res, b)
+		}
+	}
+
+	return res, nil
+}
