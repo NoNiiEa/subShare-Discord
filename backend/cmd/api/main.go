@@ -27,6 +27,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	loc, err := time.LoadLocation("Asia/Bangkok")
+    if err != nil {
+        log.Fatalf("Critical error: could not load timezone: %v", err)
+    }
+
+    time.Local = loc
+
 	slipBaseURL := os.Getenv("EASISLIP_API_URL")
 	slipApiKEY := os.Getenv("EASISLIP_API_TOKEN")
 
