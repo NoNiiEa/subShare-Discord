@@ -16,6 +16,7 @@ export default {
 
         const backend = new BackendClient({
             baseUrl: config.BACKEND_BASE_URL || "http://localhost:8000",
+            apiKey: config.BACKEND_API_KEY
         });
 
         const res = await backend.health.ping();

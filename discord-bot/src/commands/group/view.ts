@@ -94,7 +94,7 @@ export async function executeView(interaction: ChatInputCommandInteraction) {
 
         const groups = await backend.group.view(userId, guildId);
 
-        if (groups.length === 0) {
+        if (!groups || groups.length === 0) {
             const emptyEmbed = new EmbedBuilder()
                 .setTitle("📂 My Groups")
                 .setDescription("You are not part of any subscription groups yet.")
