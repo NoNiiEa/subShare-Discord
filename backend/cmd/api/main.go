@@ -63,7 +63,7 @@ func startDailyPaymentReset(ctx context.Context, svc service.GroupService) {
 
         // Initialize lastDay to current day so we don't run immediately on startup
         // (Unless you WANT it to run on startup? If so, set to -1)
-        var lastDay = time.Now().Day()
+        var lastDay = -1
 
         for {
             select {
