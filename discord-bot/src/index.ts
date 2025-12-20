@@ -7,7 +7,7 @@ import { config } from "./config.js"
 import { setupCommandHandler } from "./handler/commadHandler.js"
 import { initDailyReminders } from "./services/reminder.js";
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers,] });
 
 client.once(Events.ClientReady, (readyClient) => {
 	console.log(`Ready! Logged in as ${readyClient.user.tag}`);
