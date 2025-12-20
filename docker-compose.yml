@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: subshare-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - EASISLIP_API_URL=${EASISLIP_API_URL}
+      - EASISLIP_API_TOKEN=${EASISLIP_API_TOKEN}
+      - API_SECRET_TOKEN=${BACKEND_API_KEY}
+    volumes:
+      - ./backend/data:/app/data
+    working_dir: /app
+    networks:
+      - subshare-network
+    restart: unless-stopped
+
+  discord-bot:
+    build:
+      context: ./discord-bot
+      dockerfile: Dockerfile
+    container_name: subshare-discord-bot
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+      - BACKEND_BASE_URL=http://backend:8080
+      - BACKEND_API_KEY=${BACKEND_API_KEY}
+      - DEVELOPMENT_GUILD_ID=${DEVELOPMENT_GUILD_ID}
+      - DEVELOPER=${DEVELOPER}
+    depends_on:
+      - backend
+    networks:
+      - subshare-network
+    restart: unless-stopped
+
+networks:
+  subshare-network:
+    driver: bridge
+
+volumes:
+  backend-db:
+    driver: local
+

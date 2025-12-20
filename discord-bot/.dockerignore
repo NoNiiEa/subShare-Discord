@@ -1,0 +1,13 @@
+node_modules
+dist
+tmp
+*.log
+.git
+.gitignore
+.env
+.env.*
+.DS_Store
+*.swp
+*.swo
+*~
+
