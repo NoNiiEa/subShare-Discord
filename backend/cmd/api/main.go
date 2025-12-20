@@ -58,12 +58,12 @@ func main() {
 func startDailyPaymentReset(ctx context.Context, svc service.GroupService) {
     go func() {
         // Ticker: Check every hour (or every 30 mins to be safe)
-        ticker := time.NewTicker(time.Second) 
+        ticker := time.NewTicker(time.Hour) 
         defer ticker.Stop()
 
         // Initialize lastDay to current day so we don't run immediately on startup
         // (Unless you WANT it to run on startup? If so, set to -1)
-        var lastDay = -1
+        var lastDay = time.Now().Day()
 
         for {
             select {

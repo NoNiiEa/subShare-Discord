@@ -116,7 +116,7 @@ async function findPaymentChannel(guild: Guild): Promise<TextChannel | null> {
 }
 
 export function initDailyReminders(client: Client) {
-    cron.schedule("0 20 * * *", () => {
+    cron.schedule("0 8 * * *", () => {
         checkUnpaidBills(client);
     }, {
         timezone: "Asia/Bangkok"

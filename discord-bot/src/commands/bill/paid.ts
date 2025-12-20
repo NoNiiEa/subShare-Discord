@@ -28,7 +28,7 @@ export async function autocompletePaid(interaction: AutocompleteInteraction) {
     try {
         const bills = await backend.bill.GetUnpaidByUserAndGuild(userId, guildId);
 
-        if (bills.length === 0) {
+        if (!bills || bills.length === 0) {
             await interaction.respond([]);
             return;
         }
