@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { Client, EmbedBuilder, ChannelType, TextChannel } from "discord.js";
+import { Client, EmbedBuilder, ChannelType, TextChannel, Guild } from "discord.js";
 import { BackendClient } from "../api/index.js";
 import { config } from "../config.js";
 
@@ -9,74 +9,61 @@ const backend = new BackendClient({
 });
 
 export async function checkUnpaidBills(client: Client) {
-    console.log("⏰ Running unpaid bill check (Manual/Auto)...");
+    console.log("⏰ Running unpaid bill check (Channel Mode)...");
 
     try {
         const today = new Date().getDate();
-        // Fetch fresh guild data to ensure cache is up to date
         const guilds = await client.guilds.fetch();
         
         let totalSent = 0;
 
         for (const [guildId, _] of guilds) {
             try {
-                // 1. Get real guild object (needed for channels)
                 const guild = await client.guilds.fetch(guildId);
-
-                // 2. Find a channel to send to
-                // Priority: System Channel -> A channel named "payments" -> First Sendable Channel
-                let targetChannel = guild.systemChannel;
                 
-                if (!targetChannel) {
-                    targetChannel = guild.channels.cache.find(
-                        (c) => c.name.includes("payment") && c.type === ChannelType.GuildText
-                    ) as TextChannel;
-                }
+                const targetChannel = await findPaymentChannel(guild);
 
                 if (!targetChannel) {
-                    // Fallback: Find first text channel we can write to
-                    targetChannel = guild.channels.cache.find(
-                        (c) => c.type === ChannelType.GuildText && 
-                               c.permissionsFor(guild.members.me!)?.has("SendMessages")
-                    ) as TextChannel;
-                }
-
-                if (!targetChannel) {
-                    console.warn(`[${guild.name}] No suitable channel found to send reminders.`);
+                    console.warn(`[${guild.name}] Skipped: No suitable channel found.`);
                     continue;
                 }
 
-                // 3. Get Bills
                 const unpaidBills = await backend.bill.GetUnpaidByGuild(guildId);
+                
                 if (!unpaidBills || unpaidBills.length === 0) continue;
 
-                console.log(`[${guild.name}] Found ${unpaidBills.length} unpaid bills. Sending to #${targetChannel.name}`);
+                console.log(`[${guild.name}] Found ${unpaidBills.length} unpaid bills.`);
+
+                const groupNameCache = new Map<number, string>();
 
                 for (const bill of unpaidBills) {
                     try {
-                        const group = await backend.group.get(bill.group_id);
+                        let groupName = groupNameCache.get(bill.group_id);
                         
+                        if (!groupName) {
+                            const group = await backend.group.get(bill.group_id);
+                            groupName = group.name;
+                            groupNameCache.set(bill.group_id, groupName);
+                        }
+
                         const embed = new EmbedBuilder()
                             .setTitle("⚠️ Payment Due Reminder")
-                            .setDescription(`Hello <@${bill.member_id}>! \n\nYour payment for **${group.name}** is currently **Pending**.`)
+                            .setDescription(`Hello <@${bill.member_id}>! \n\nYour payment for **${groupName}** is currently **Pending**.`)
                             .setColor("Red")
                             .addFields(
                                 { name: "Amount Due", value: `${bill.amount_due} THB`, inline: true },
-                                { name: "Due Date", value: `Day ${today}`, inline: true },
-                                { name: "Cycle", value: `${bill.month}/${bill.year}`, inline: true }
+                                { name: "Billing Cycle", value: `${bill.month}/${bill.year}`, inline: true },
+                                { name: "Due Date", value: `Day ${today}`, inline: true } 
                             )
-                            .setFooter({ text: "Please submit your payment slip using /pay" });
+                            .setFooter({ text: "Use /bill paid to submit your slip" });
 
-                        // Send to Channel instead of DM
-                        // We add 'content' to ensure the user gets a push notification (Ping)
                         await targetChannel.send({ 
-                            content: `<@${bill.member_id}>`, 
+                            content: `<@${bill.member_id}>`, // This triggers the PING
                             embeds: [embed] 
                         });
                         
                         totalSent++;
                         
-                        // Small delay to prevent rate limits if many bills
                         await new Promise(r => setTimeout(r, 1000)); 
 
                     } catch (e) {
@@ -94,6 +81,38 @@ export async function checkUnpaidBills(client: Client) {
         console.error("❌ Critical error in bill checker:", err);
         return 0;
     }
+}
+
+async function findPaymentChannel(guild: Guild): Promise<TextChannel | null> {
+    await guild.channels.fetch();
+    
+    const paymentChannel = guild.channels.cache.find(
+        (c) => c.name.toLowerCase() === "payment" && 
+               c.type === ChannelType.GuildText &&
+               c.permissionsFor(guild.members.me!)?.has("SendMessages")
+    ) as TextChannel;
+    
+    if (paymentChannel) {
+        console.log(`[${guild.name}] Found payment channel: #${paymentChannel.name}`);
+        return paymentChannel;
+    }
+
+    if (guild.systemChannel && 
+        guild.systemChannel.permissionsFor(guild.members.me!)?.has("SendMessages")) {
+        console.log(`[${guild.name}] Using system channel: #${guild.systemChannel.name}`);
+        return guild.systemChannel;
+    }
+
+    const fallbackChannel = guild.channels.cache.find(
+        (c) => c.type === ChannelType.GuildText && 
+               c.permissionsFor(guild.members.me!)?.has("SendMessages")
+    ) as TextChannel || null;
+    
+    if (fallbackChannel) {
+        console.log(`[${guild.name}] Using fallback channel: #${fallbackChannel.name}`);
+    }
+    
+    return fallbackChannel;
 }
 
 export function initDailyReminders(client: Client) {
