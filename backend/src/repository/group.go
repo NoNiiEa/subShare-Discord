@@ -17,6 +17,7 @@ type GroupRepository interface {
 	GetById(ctx context.Context, groupId int) (*models.Group, error)
 	GetByGuildId(ctx context.Context, guildId string) ([]models.Group, error)
 	GetByDueDay(ctx context.Context, dueDay int) ([]models.Group, error)
+	DeleteById(ctx context.Context, groupId int) error
 }
 
 type groupRepo struct {
@@ -306,4 +307,26 @@ func (r *groupRepo) GetByDueDay(ctx context.Context, dueDay int) ([]models.Group
 	}
 
 	return result, nil
+}
+
+func (r *groupRepo) DeleteById(ctx context.Context, groupId int) error {
+	const q = `
+	DELETE FROM groups
+	WHERE id = ?
+	`
+
+	res, err := r.db.ExecContext(ctx, q, groupId)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return exception.ErrNotFound
+	}
+
+	return nil
 }

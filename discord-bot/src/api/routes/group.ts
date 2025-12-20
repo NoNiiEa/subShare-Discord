@@ -34,4 +34,8 @@ export class Group extends BaseAPI {
     async DeclineInvite(payload: AcceptInviteRequest, groupId: number): Promise<GroupResponse> {
         return await this.request<GroupResponse>(`/groups/${groupId}/decline-invite`, "POST", payload);
     }
+
+    async delete(groupId: number): Promise<void> {
+        return await this.request<void>(`/groups/${groupId}`, "DELETE");
+    }
 }

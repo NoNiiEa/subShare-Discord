@@ -247,3 +247,26 @@ func (h *GroupHandler) DeclineInvite(w http.ResponseWriter, r *http.Request) {
 
 	helper.WriteJSON(w, 200, g)
 }
+
+func (h *GroupHandler) DeleteById(w http.ResponseWriter, r *http.Request) {
+	groupIdStr := r.PathValue("groupId")
+
+	groupId, err := strconv.Atoi(groupIdStr)
+	if err != nil {
+		http.Error(w, "invalid ID format", http.StatusBadRequest)
+		return
+	}
+
+	err = h.service.DeleteById(r.Context(), groupId)
+	if err != nil {
+		if errors.Is(err, exception.ErrNotFound) {
+			http.Error(w, "group is not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	helper.WriteJSON(w, http.StatusOK, nil)
+}

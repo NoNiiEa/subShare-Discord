@@ -20,6 +20,7 @@ type BillService interface {
 	GetUnpaidByGuildId(ctx context.Context, guildId string) ([]models.Bill, error)
 	GetUnpaidByGuildIdAndUserId(ctx context.Context, guildId string, userId string) ([]models.Bill, error)
 	Pay(ctx context.Context, userId string, guildId string, billId int, proofUrl string) (*models.Bill, error)
+	DeleteById(ctx context.Context, billId int) error
 }
 
 type billService struct {
@@ -302,4 +303,12 @@ func parseSlipDate(dateStr string) (time.Time, error) {
 	}
 
 	return time.Time{}, fmt.Errorf("unable to parse date: %s", dateStr)
+}
+
+func (s *billService) DeleteById(ctx context.Context, billId int) error {
+	if billId <= 0 {
+		return exception.ErrInvalidID
+	}
+
+	return s.repo.DeleteById(ctx, billId)
 }

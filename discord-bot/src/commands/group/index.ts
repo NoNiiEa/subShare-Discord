@@ -9,6 +9,7 @@ import { executeCreate } from "./create.js";
 import { executeView, autocompleteView } from "./view.js";
 import { executeInvite } from "./invite.js";
 import { executeAccept } from "./accept.js";
+import { executeDelete, autocompleteDelete } from "./delete.js";
 
 export default {
     data: new SlashCommandBuilder()
@@ -84,6 +85,18 @@ export default {
             subcommand
                 .setName("accept")
                 .setDescription("accept invite to a group")
+        )
+        .addSubcommand((subcommand) => 
+            subcommand
+                .setName("delete")
+                .setDescription("delete your group")
+                .addStringOption((option) =>
+                    option
+                        .setName("group")
+                        .setDescription("Select a group to delete")
+                        .setRequired(true)
+                        .setAutocomplete(true)
+                )
         ),
 
     async execute(interaction: ChatInputCommandInteraction) {
@@ -102,6 +115,9 @@ export default {
             case "accept":
                 await executeAccept(interaction);
                 break;
+            case "delete":
+                await executeDelete(interaction);
+                break;
         }
     },
 
@@ -111,6 +127,9 @@ export default {
         switch (subcommand) {
             case "view":
                 await autocompleteView(interaction);
+                break;
+            case "delete":
+                await autocompleteDelete(interaction);
                 break;
         }
     }

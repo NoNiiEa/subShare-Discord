@@ -11,9 +11,11 @@ import (
 
 type BillRepository interface {
 	Create(ctx context.Context, b *models.Bill) error
-	Update(ctx context.Context, billId int ,b *models.Bill) error
+	Update(ctx context.Context, billId int, b *models.Bill) error
 	GetByGuildId(ctx context.Context, guildId string) ([]models.Bill, error)
 	GetById(ctx context.Context, billId int) (*models.Bill, error)
+	DeleteById(ctx context.Context, billId int) error
+	GetByGroupID(ctx context.Context, groupId int) ([]models.Bill, error)
 }
 
 type billRepo struct {
@@ -21,7 +23,7 @@ type billRepo struct {
 }
 
 func NewBillRepository(db *sql.DB) BillRepository {
-	return &billRepo{ db: db }
+	return &billRepo{db: db}
 }
 
 func (r *billRepo) Create(ctx context.Context, b *models.Bill) error {
@@ -310,4 +312,105 @@ func (r *billRepo) GetById(ctx context.Context, billId int) (*models.Bill, error
 	}
 
 	return &b, nil
+}
+
+func (r *billRepo) DeleteById(ctx context.Context, billId int) error {
+	const q = `
+	DELETE FROM bills
+	WHERE id = ?;
+	`
+
+	res, err := r.db.ExecContext(ctx, q, billId)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return exception.ErrNotFound
+	}
+
+	return nil
+}
+
+func (r *billRepo) GetByGroupID(ctx context.Context, groupId int) ([]models.Bill, error) {
+	const q = `
+	SELECT
+		id,
+		group_id,
+		guild_id,
+		member_id,
+		year,
+		month,
+		amount_due,
+		currency,
+		status,
+		description,
+		proof_json,
+		created_at,
+		updated_at,
+		submitted_at,
+		verified_at,
+		rejected_at
+	FROM bills
+	WHERE group_id = ?
+	`
+
+	rows, err := r.db.QueryContext(ctx, q, groupId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []models.Bill
+
+	for rows.Next() {
+		var b models.Bill
+		var createdAt, updatedAt string
+		var submittedAt, verifiedAt, rejectedAt *string
+
+		if err := rows.Scan(
+			&b.ID,
+			&b.GroupID,
+			&b.GuildID,
+			&b.MemberID,
+			&b.Year,
+			&b.Month,
+			&b.AmountDue,
+			&b.Currency,
+			&b.Status,
+			&b.Description,
+			&b.ProofJSON,
+			&createdAt,
+			&updatedAt,
+			&submittedAt,
+			&verifiedAt,
+			&rejectedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		b.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		b.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+
+		if submittedAt != nil {
+			t, _ := time.Parse(time.RFC3339, *submittedAt)
+			b.SubmittedAt = &t
+		}
+		if verifiedAt != nil {
+			t, _ := time.Parse(time.RFC3339, *verifiedAt)
+			b.VerifiedAt = &t
+		}
+		if rejectedAt != nil {
+			t, _ := time.Parse(time.RFC3339, *rejectedAt)
+			b.RejectedAt = &t
+		}
+
+		result = append(result, b)
+	}
+
+	return result, nil
 }
