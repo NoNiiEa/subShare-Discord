@@ -3,12 +3,22 @@ package database
 import (
 	"database/sql"
 	"log"
+	"os"
+	"path/filepath"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 func NewDatabase() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", "file:app.db?cache=shared&mode=rwc")
+	// Ensure data directory exists
+	dataDir := "data"
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return nil, err
+	}
+
+	// Use proper file path
+	dbPath := filepath.Join(dataDir, "app.db")
+	db, err := sql.Open("sqlite3", dbPath+"?cache=shared&mode=rwc")
 	if err != nil {
 		return nil, err
 	}
