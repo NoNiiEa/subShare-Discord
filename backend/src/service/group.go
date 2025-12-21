@@ -20,7 +20,7 @@ type GroupService interface {
 	DeclineInvite(ctx context.Context, groupId int, userId string) (*models.Group, error)
 	CreateBillCycle(ctx context.Context, g *models.Group) error
 	GetByDueDay(ctx context.Context, dueDay int) ([]models.Group, error)
-	DeleteById(ctx context.Context, groupId int) error
+	DeleteById(ctx context.Context, groupId int, userId string) error
 }
 
 type groupService struct {
@@ -301,9 +301,18 @@ func (s *groupService) GetByDueDay(ctx context.Context, dueDay int) ([]models.Gr
 	return s.repo.GetByDueDay(ctx, dueDay)
 }
 
-func (s *groupService) DeleteById(ctx context.Context, groupId int) error {
+func (s *groupService) DeleteById(ctx context.Context, groupId int, userId string) error {
 	if groupId <= 0 {
 		return exception.ErrInvalidID
+	}
+
+	g, err := s.repo.GetById(ctx, groupId)
+	if err != nil {
+		return err
+	}
+
+	if g.OwnerDiscordID != userId {
+		return exception.ErrNoPermission
 	}
 
 	bills, err := s.billRepo.GetByGroupID(ctx, groupId)

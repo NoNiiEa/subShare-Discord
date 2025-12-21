@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: subshare-backend
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       - PORT=8080
       - EASISLIP_API_URL=${EASISLIP_API_URL}
