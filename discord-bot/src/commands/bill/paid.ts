@@ -181,10 +181,12 @@ export async function executePaid(interaction: ChatInputCommandInteraction) {
         let remainingBill = null;
         try {
             const unpaidBills = await backend.bill.GetUnpaidByUserAndGuild(interaction.user.id, guildId);
-            remainingBill = unpaidBills.find((bill: any) => 
-                bill.description?.toLowerCase().includes("underpaid") || 
-                bill.description?.toLowerCase().includes("remaining balance")
-            );
+            if (unpaidBills) {
+                remainingBill = unpaidBills.find((bill: any) => 
+                    bill.description?.toLowerCase().includes("underpaid") || 
+                    bill.description?.toLowerCase().includes("remaining balance")
+                );
+            }
         } catch (err) {
             console.error("Failed to check for remaining bills:", err);
         }
