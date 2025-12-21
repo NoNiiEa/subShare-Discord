@@ -11,6 +11,7 @@ import (
 	"github.com/NoNiiEa/subShare-Discord/src/helper"
 	"github.com/NoNiiEa/subShare-Discord/src/models"
 	"github.com/NoNiiEa/subShare-Discord/src/repository"
+	"github.com/NoNiiEa/subShare-Discord/src/okslip"
 )
 
 type BillService interface {
@@ -27,10 +28,11 @@ type billService struct {
 	repo           repository.BillRepository
 	groupRepo      repository.GroupRepository
 	easySlipClient easyslip.EasySlipClient
+	okSlipClient   okslip.OkSlipClient
 }
 
-func NewBillService(repo repository.BillRepository, groupRepo repository.GroupRepository, easySlipClient easyslip.EasySlipClient) BillService {
-	return &billService{repo: repo, groupRepo: groupRepo, easySlipClient: easySlipClient}
+func NewBillService(repo repository.BillRepository, groupRepo repository.GroupRepository, easySlipClient easyslip.EasySlipClient, okaySlipClient okslip.OkSlipClient) BillService {
+	return &billService{repo: repo, groupRepo: groupRepo, easySlipClient: easySlipClient, okSlipClient: okaySlipClient}
 }
 
 func (s *billService) Create(ctx context.Context, b *models.Bill) error {
@@ -96,150 +98,141 @@ func (s *billService) GetByGuildIdAndUserId(ctx context.Context, guildId string,
 }
 
 func (s *billService) Pay(ctx context.Context, userId string, guildId string, billId int, proofUrl string) (*models.Bill, error) {
-	if guildId == "" || userId == "" {
-		return nil, exception.ErrInvalidDiscordId
-	}
-	if proofUrl == "" {
-		return nil, exception.ErrNoUrl
-	}
+    if guildId == "" || userId == "" {
+        return nil, exception.ErrInvalidDiscordId
+    }
+    if proofUrl == "" {
+        return nil, exception.ErrNoUrl
+    }
 
-	b, err := s.repo.GetById(ctx, billId)
-	if err != nil {
-		return nil, err
-	}
-	if b == nil {
-		return nil, exception.ErrBillNotFound
-	}
+    // 1. Get Bill and Group Data
+    b, err := s.repo.GetById(ctx, billId)
+    if err != nil || b == nil {
+        if b == nil { return nil, exception.ErrBillNotFound }
+        return nil, err
+    }
 
-	if b.Status == models.BillStatusVerified {
-		return nil, exception.ErrBillAlreadyPaid
-	}
+    if b.Status == models.BillStatusVerified {
+        return nil, exception.ErrBillAlreadyPaid
+    }
 
-	if b.MemberID != userId || b.GuildID != guildId {
-		return nil, exception.ErrNotMatch
-	}
+    if b.MemberID != userId || b.GuildID != guildId {
+        return nil, exception.ErrNotMatch
+    }
 
-	g, err := s.groupRepo.GetById(ctx, b.GroupID)
-	if err != nil {
-		return nil, err
-	}
-	if g == nil {
-		return nil, exception.ErrGroupNotFound
-	}
+    g, err := s.groupRepo.GetById(ctx, b.GroupID)
+    if err != nil || g == nil {
+        if g == nil { return nil, exception.ErrGroupNotFound }
+        return nil, err
+    }
 
-	billSlip, err := s.easySlipClient.CheckSlip(ctx, proofUrl)
-	if err != nil {
-		return nil, err
-	}
+    // 2. Call the NEW okSlipClient
+    billSlip, err := s.okSlipClient.CheckSlip(ctx, proofUrl)
+    if err != nil {
+        return nil, err
+    }
 
-	now := time.Now().UTC()
-	if billSlip.Data.Date != "" {
-		slipDate, err := parseSlipDate(billSlip.Data.Date)
-		if err == nil {
-			timeDiff := now.Sub(slipDate)
-			if timeDiff > 30*time.Minute {
-				return nil, exception.ErrSlipExpired
-			}
-		}
-	}
+    // 3. Validate Slip Freshness (using the ISO timestamp from your documentation)
+    now := time.Now().UTC()
+    // Using TransTimestamp from the OkSlip response we defined earlier
+    timeDiff := now.Sub(billSlip.Data.TransTimestamp)
+    if timeDiff > 30*time.Minute {
+        return nil, exception.ErrSlipExpired
+    }
 
-	acc := billSlip.Data.Receiver.Account
-	amountPaid := billSlip.Data.Amount.Amount
-	var method models.PaymentMethod
-	var slipAccount string
+    // 4. Extract Receiver Details for Verification
+    // Based on documentation: receiver.account.type (BANKAC, TOKEN)
+    acc := billSlip.Data.Receiver.Account
+    proxy := billSlip.Data.Receiver.Proxy
+    
+    amountPaid := billSlip.Data.Amount // Data.Amount is float64 in our struct
+    var method models.PaymentMethod
+    var slipAccount string
 
-	if acc.Bank != nil {
-		method = models.BankAccount
-		slipAccount = acc.Bank.Account
-	} else if acc.Proxy != nil {
-		method = models.PromptPay
-		slipAccount = acc.Proxy.Account
-	} else {
-		method = models.BankAccount
-		if acc.Bank != nil {
-			slipAccount = acc.Bank.Account
-		}
-	}
-	slipAccount = helper.ExtractNumericCharacters(slipAccount)
+    if acc.Type == "BANKAC" {
+        method = models.BankAccount
+        slipAccount = acc.Value
+    } else if proxy.Type != "" { // If there's a proxy (MSISDN, NATID, etc)
+        method = models.PromptPay
+        slipAccount = proxy.Value
+    } else {
+        // Fallback or default
+        method = models.BankAccount
+        slipAccount = acc.Value
+    }
 
-	if g.Payment.Method != method || helper.Last4(g.Payment.Account) != helper.Last4(slipAccount) {
-		return nil, exception.ErrWrongReciever
-	}
+    slipAccount = helper.ExtractNumericCharacters(slipAccount)
 
-	b.UpdatedAt = now
-	b.SubmittedAt = &now
-	b.Status = models.BillStatusVerified
+    // Verify if the receiver on the slip matches the Group's registered payment info
+    // Note: okSlip returns masked accounts (xxx-x-x0209-x), so we compare Last4
+    if g.Payment.Method != method || helper.Last4(g.Payment.Account) != helper.Last4(slipAccount) {
+        return nil, exception.ErrWrongReciever
+    }
 
-	billSlipJson, err := json.Marshal(billSlip)
-	if err != nil {
-		return nil, err
-	}
-	b.ProofJSON = string(billSlipJson)
+    // 5. Update Bill Status
+    b.UpdatedAt = now
+    b.SubmittedAt = &now
+    b.Status = models.BillStatusVerified
 
-	if amountPaid < float64(b.AmountDue) {
-		remainingAmount := b.AmountDue - int(amountPaid)
+    billSlipJson, _ := json.Marshal(billSlip)
+    b.ProofJSON = string(billSlipJson)
 
-		remainingBill := models.Bill{
-			GroupID:     g.ID,
-			GuildID:     g.DiscordGuildID,
-			MemberID:    userId,
-			Year:        now.Year(),
-			Month:       int(now.Month()),
-			AmountDue:   remainingAmount,
-			Currency:    "THB",
-			Status:      models.BillStatusPending,
-			Description: "Remaining balance (Underpaid)",
-			ProofJSON:   "",
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		}
+    // 6. Handle Underpayment
+    if amountPaid < float64(b.AmountDue) {
+        remainingAmount := b.AmountDue - int(amountPaid)
+        remainingBill := models.Bill{
+            GroupID:     g.ID,
+            GuildID:     g.DiscordGuildID,
+            MemberID:    userId,
+            Year:        now.Year(),
+            Month:       int(now.Month()),
+            AmountDue:   remainingAmount,
+            Currency:    "THB",
+            Status:      models.BillStatusPending,
+            Description: "Remaining balance (Underpaid)",
+            CreatedAt:   now,
+            UpdatedAt:   now,
+        }
+        _ = s.repo.Create(ctx, &remainingBill)
+    }
 
-		if err := s.repo.Create(ctx, &remainingBill); err != nil {
-			return nil, err
-		}
-	}
+    // 7. Reduce Member Debt
+    memberFound := false
+    for i := range g.Members {
+        m := &g.Members[i]
+        if m.MemberID == userId {
+            debtReduction := b.AmountDue
+            if debtReduction > m.Dept {
+                debtReduction = m.Dept
+            }
+            m.Dept -= debtReduction
+            
+            if m.Dept <= 0 {
+                m.Dept = 0
+                m.Payment = models.PaymentStatusPaid
+            }
 
-	memberFound := false
-	for i := range g.Members {
-		m := &g.Members[i]
+            if m.Status == models.MemberStatusInvited {
+                m.Status = models.MemberStatusActive
+            }
+            memberFound = true
+            break
+        }
+    }
 
-		if m.MemberID == userId {
-			debtReduction := b.AmountDue
-			if debtReduction > m.Dept {
-				debtReduction = m.Dept
-			}
-			m.Dept -= debtReduction
+    if !memberFound {
+        return nil, exception.ErrMemberNotFound
+    }
 
-			if m.Dept < 0 {
-				m.Dept = 0
-			}
+    // 8. Atomic-like updates (ideally these should be in a transaction)
+    if err := s.repo.Update(ctx, billId, b); err != nil {
+        return nil, err
+    }
+    if err := s.groupRepo.Update(ctx, g.ID, g); err != nil {
+        return nil, err
+    }
 
-			if m.Dept <= 0 {
-				m.Payment = models.PaymentStatusPaid
-			}
-
-			if m.Status == models.MemberStatusInvited {
-				m.Status = models.MemberStatusActive
-			}
-
-			memberFound = true
-			break
-		}
-	}
-
-	if !memberFound {
-		return nil, exception.ErrMemberNotFound
-	}
-
-	if err := s.repo.Update(ctx, billId, b); err != nil {
-		return nil, err
-	}
-
-	if err := s.groupRepo.Update(ctx, g.ID, g); err != nil {
-		return nil, err
-	}
-
-	return b, nil
+    return b, nil
 }
 
 func (s *billService) GetUnpaidByGuildId(ctx context.Context, guildId string) ([]models.Bill, error) {

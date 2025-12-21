@@ -30,6 +30,7 @@ func NewRouter(groupHandler *handlers.GroupHandler, billHandler *handlers.BillHa
 	mux.HandleFunc("GET /guild/{guildId}/unpaid-bills", billHandler.GetUnpaidByGuildId)
 
 	mux.HandleFunc("POST /bill/pay", billHandler.Pay)
+	mux.HandleFunc("POST /bill/create", billHandler.Create)
 	
 	return middleware.RequestLogger(
         middleware.AuthMiddleware(mux),

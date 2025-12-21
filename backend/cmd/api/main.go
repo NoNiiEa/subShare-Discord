@@ -14,6 +14,7 @@ import (
 	"github.com/NoNiiEa/subShare-Discord/src/easySlip"
 	"github.com/NoNiiEa/subShare-Discord/src/repository"
 	"github.com/NoNiiEa/subShare-Discord/src/service"
+    "github.com/NoNiiEa/subShare-Discord/src/okslip"
 )
 
 func main() {
@@ -33,11 +34,15 @@ func main() {
 	slipBaseURL := os.Getenv("EASISLIP_API_URL")
 	slipApiKEY := os.Getenv("EASISLIP_API_TOKEN")
 
+    okSlipBaseURL := os.Getenv("SLIPOK_API_URL")
+    okSlipApiKEY := os.Getenv("SLIPOK_API_KEY")
+
 	groupRepo := repository.NewGroupRepository(db)
 	billRepo := repository.NewBillRepository(db)
 	groupService := service.NewGroupService(groupRepo, billRepo)
 	easySlipClient := easyslip.NewClient(slipBaseURL, slipApiKEY) 
-	billService := service.NewBillService(billRepo, groupRepo, easySlipClient)
+    okSlipClient := okslip.NewClient(okSlipBaseURL, okSlipApiKEY)
+	billService := service.NewBillService(billRepo, groupRepo, easySlipClient, okSlipClient)
 	groupHandler := handlers.NewGroupHandler(groupService)
 	billHandler := handlers.NewBillHandler(billService)
 
