@@ -10,6 +10,8 @@ services:
       - PORT=8080
       - EASISLIP_API_URL=${EASISLIP_API_URL}
       - EASISLIP_API_TOKEN=${EASISLIP_API_TOKEN}
+      - SLIPOK_API_URL=${SLIPOK_API_URL}
+      - SLIPOK_API_KEY=${SLIPOK_API_KEY}
       - API_SECRET_TOKEN=${BACKEND_API_KEY}
     volumes:
       - ./backend/data:/app/data
