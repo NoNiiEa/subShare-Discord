@@ -98,7 +98,7 @@ export async function executeDelete(interaction: ChatInputCommandInteraction) {
         }
 
         // Delete the group
-        await backend.group.delete(groupId);
+        await backend.group.delete(groupId, userId);
 
         const embed = new EmbedBuilder()
             .setTitle("✅ Group Deleted Successfully")

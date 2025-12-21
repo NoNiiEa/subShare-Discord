@@ -257,7 +257,9 @@ func (h *GroupHandler) DeleteById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.service.DeleteById(r.Context(), groupId)
+	userId := r.PathValue("userId")
+
+	err = h.service.DeleteById(r.Context(), groupId, userId)
 	if err != nil {
 		if errors.Is(err, exception.ErrNotFound) {
 			http.Error(w, "group is not found", http.StatusNotFound)
