@@ -41,8 +41,6 @@ func (c *okSlipClient) CheckSlip(ctx context.Context, slipUrl string) (*Response
         return nil, err
     }
 
-	fmt.Printf("DEBUG: Calling OKSLIP at URL: [%s]\n", c.baseURL)
-
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL, bytes.NewBuffer(jsonBytes))
     if err != nil {
         return nil, err
