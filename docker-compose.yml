@@ -13,6 +13,7 @@ services:
       - SLIPOK_API_URL=${SLIPOK_API_URL}
       - SLIPOK_API_KEY=${SLIPOK_API_KEY}
       - API_SECRET_TOKEN=${BACKEND_API_KEY}
+      - TZ=Asia/Bangkok
     volumes:
       - ./backend/data:/app/data
     working_dir: /app
@@ -32,6 +33,7 @@ services:
       - BACKEND_API_KEY=${BACKEND_API_KEY}
       - DEVELOPMENT_GUILD_ID=${DEVELOPMENT_GUILD_ID}
       - DEVELOPER=${DEVELOPER}
+      - TZ=Asia/Bangkok
     depends_on:
       - backend
     networks:
