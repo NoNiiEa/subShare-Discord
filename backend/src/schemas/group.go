@@ -13,6 +13,13 @@ type CreateGroupRequest struct {
 	Payment        models.PaymentAccount `json:"payment"`
 }
 
+type UpdateGroupRequest struct {
+	Name           string   `json:"name"`
+	Amount         int  `json:"amount"`
+	DueDay         int      `json:"due_day"`
+	Payment        models.PaymentAccount `json:"payment"`
+}
+
 type InviteRequest struct {
 	OwnerId string `json:"owner_id"`
 	MemberIds []string `json:"member_ids"`
