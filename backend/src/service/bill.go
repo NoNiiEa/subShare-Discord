@@ -33,8 +33,8 @@ type billService struct {
 	okSlipClient   okslip.OkSlipClient
 }
 
-func NewBillService(repo repository.BillRepository, groupRepo repository.GroupRepository, easySlipClient easyslip.EasySlipClient, okaySlipClient okslip.OkSlipClient) BillService {
-	return &billService{repo: repo, groupRepo: groupRepo, easySlipClient: easySlipClient, okSlipClient: okaySlipClient}
+func NewBillService(repo repository.BillRepository, groupRepo repository.GroupRepository, easySlipClient easyslip.EasySlipClient, okSlipClient okslip.OkSlipClient) BillService {
+	return &billService{repo: repo, groupRepo: groupRepo, easySlipClient: easySlipClient, okSlipClient: okSlipClient}
 }
 
 func (s *billService) Create(ctx context.Context, b *models.Bill) error {
@@ -125,10 +125,12 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
     }
 
     g, err := s.groupRepo.GetById(ctx, b.GroupID)
-    if err != nil || g == nil {
-        if g == nil { return nil, exception.ErrGroupNotFound }
-        return nil, err
-    }
+    if err != nil {
+		if errors.Is(err, exception.ErrNotFound) {
+			return nil, exception.ErrGroupNotFound
+		}
+		return nil, err
+	}
 
     // 2. Call the NEW okSlipClient
     billSlip, err := s.okSlipClient.CheckSlip(ctx, proofUrl)

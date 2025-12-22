@@ -61,8 +61,8 @@ func (c *okSlipClient) CheckSlip(ctx context.Context, slipUrl string) (*Response
     }
 
 	if resp.StatusCode != http.StatusOK {
-        return nil, ErrInternal
-    }
+		return nil, fmt.Errorf("okslip API request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
 
 	var result Response
 	if err := json.Unmarshal(bodyBytes, &result); err != nil {

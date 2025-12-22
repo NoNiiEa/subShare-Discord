@@ -77,5 +77,3 @@ export const registerCommands = async () => {
         console.error(error);
     }
 }
-
-registerCommands();

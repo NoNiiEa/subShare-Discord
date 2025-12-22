@@ -137,9 +137,19 @@ func (h *BillHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	err := h.service.Create(r.Context(), &b)
 	if err != nil {
-		helper.WriteError(w, http.StatusInternalServerError, "Failed to create bill")
-		return
+	switch {
+	case errors.Is(err, exception.ErrInvalidID),
+		errors.Is(err, exception.ErrInvalidDiscordId),
+		errors.Is(err, exception.ErrInvalidYear),
+		errors.Is(err, exception.ErrInvalidMonth),
+		errors.Is(err, exception.ErrInvalidAmount),
+		errors.Is(err, exception.ErrInvalidCurrency):
+			helper.WriteError(w, http.StatusBadRequest, err.Error())
+	default:
+			helper.WriteError(w, http.StatusInternalServerError, "Failed to create bill")
 	}
+	return
+}
 
 	helper.WriteJSON(w, http.StatusOK, b)
 }
