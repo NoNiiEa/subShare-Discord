@@ -15,8 +15,8 @@ type CreateGroupRequest struct {
 
 type UpdateGroupRequest struct {
 	Name           string   `json:"name"`
-	Amount         int  `json:"amount"`
-	DueDay         int      `json:"due_day"`
+	Amount         *int  `json:"amount"`
+	DueDay         *int      `json:"due_day"`
 	Payment        models.PaymentAccount `json:"payment"`
 }
 
