@@ -75,7 +75,16 @@ func (s *billService) Create(ctx context.Context, b *models.Bill) error {
 }
 
 func (s *billService) GetByGuildId(ctx context.Context, guildId string) ([]models.Bill, error) {
-	return s.repo.GetByGuildId(ctx, guildId)
+	bills, err := s.repo.GetByGuildId(ctx, guildId)
+	if err != nil {
+		return nil, err
+	}
+
+	if bills == nil {
+		bills = []models.Bill{}
+	}
+
+	return bills, nil
 }
 
 func (s *billService) GetByGuildIdAndUserId(ctx context.Context, guildId string, userId string) ([]models.Bill, error) {
