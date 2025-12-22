@@ -26,12 +26,12 @@ export async function autocompleteEdit(interaction: AutocompleteInteraction) {
         const groups = await backend.group.viewOwn(userId, guildId);
 
         const searchTerm = focusedValue.toLowerCase();
-        const filtered = groups.filter((group: any) => 
+        const filtered = groups.filter((group: GroupResponse) => 
             group.name.toLowerCase().includes(searchTerm) ||
             String(group.id).includes(searchTerm)
         );
 
-        const choices = filtered.slice(0, 25).map((group: any) => ({
+        const choices = filtered.slice(0, 25).map((group: GroupResponse) => ({
             name: `${group.name} (ID: ${group.id})`,
             value: String(group.id)
         }));
