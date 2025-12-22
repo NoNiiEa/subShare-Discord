@@ -20,7 +20,7 @@ import (
 
 func main() {
     if os.Getenv("APP_ENV") != "production" {
-        err := godotenv.Load()
+        err := godotenv.Load("config/.env")
         if err != nil {
             log.Println("No .env file found, relying on system environment variables")
         }
