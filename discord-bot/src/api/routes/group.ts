@@ -1,4 +1,4 @@
-import { CreateGroupRequest, GroupResponse, InviteMemberRequest, AcceptInviteRequest } from "../types.js";
+import { CreateGroupRequest, GroupResponse, InviteMemberRequest, AcceptInviteRequest, UpdateGroupRequest } from "../types.js";
 import { BaseAPI } from "../base.js";
 
 export class Group extends BaseAPI {
@@ -37,5 +37,9 @@ export class Group extends BaseAPI {
 
     async delete(groupId: number, userId: string): Promise<void> {
         return await this.request<void>(`/groups/${groupId}/member/${userId}`, "DELETE");
+    }
+
+    async update(payload: UpdateGroupRequest, groupId: number): Promise<void> {
+        return await this.request<void>(`/groups/${groupId}`, "POST", payload)
     }
 }

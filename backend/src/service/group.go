@@ -351,5 +351,13 @@ func (s *groupService) Update(ctx context.Context, groupId int, groupUpdate *mod
         existing.DueDay = groupUpdate.DueDay
     }
 
+	if groupUpdate.Payment.Account != "" {
+        existing.Payment.Account = groupUpdate.Payment.Account
+    }
+
+	if groupUpdate.Payment.Method != "" {
+		existing.Payment.Method = groupUpdate.Payment.Method
+	}
+
     return s.repo.Update(ctx, groupId, existing)
 }
