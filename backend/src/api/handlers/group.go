@@ -278,13 +278,12 @@ func (h *GroupHandler) Update(w http.ResponseWriter, r *http.Request) {
 
     groupId, err := strconv.Atoi(groupIdStr)
     if err != nil {
-        http.Error(w, "invalid ID format", http.StatusBadRequest)
+        helper.WriteError(w, http.StatusBadRequest, "invalid ID format")
         return
     }
-
     var req schemas.UpdateGroupRequest
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        http.Error(w, "invalid JSON body", http.StatusBadRequest)
+        helper.WriteError(w, http.StatusBadRequest, "invalid JSON body")
         return
     }
 
