@@ -7,6 +7,7 @@ import (
 
 	"github.com/NoNiiEa/subShare-Discord/src/exception"
 	"github.com/NoNiiEa/subShare-Discord/src/helper"
+	"github.com/NoNiiEa/subShare-Discord/src/models"
 	"github.com/NoNiiEa/subShare-Discord/src/schemas"
 	"github.com/NoNiiEa/subShare-Discord/src/service"
 )
@@ -112,4 +113,43 @@ func (h *BillHandler) GetUnpaidByGuildIdAndUserId(w http.ResponseWriter, r *http
 	}
 
 	helper.WriteJSON(w, http.StatusOK, bills)
+}
+
+func (h *BillHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var req schemas.BillCreateRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		helper.WriteError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	var b = models.Bill{
+		GroupID: req.GroupID,
+		GuildID: req.GuildID,
+		MemberID: req.MemberID,
+		Year: req.Year,
+		Month: req.Month,
+		AmountDue: req.AmountDue,
+		Currency: req.Currency,
+		Description: req.Description,
+		Status: req.Status,
+	}
+
+	err := h.service.Create(r.Context(), &b)
+	if err != nil {
+	switch {
+	case errors.Is(err, exception.ErrInvalidID),
+		errors.Is(err, exception.ErrInvalidDiscordId),
+		errors.Is(err, exception.ErrInvalidYear),
+		errors.Is(err, exception.ErrInvalidMonth),
+		errors.Is(err, exception.ErrInvalidAmount),
+		errors.Is(err, exception.ErrInvalidCurrency):
+			helper.WriteError(w, http.StatusBadRequest, err.Error())
+	default:
+			helper.WriteError(w, http.StatusInternalServerError, "Failed to create bill")
+	}
+	return
+}
+
+	helper.WriteJSON(w, http.StatusOK, b)
 }

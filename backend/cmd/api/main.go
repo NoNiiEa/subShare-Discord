@@ -12,15 +12,19 @@ import (
 	"github.com/NoNiiEa/subShare-Discord/src/api/handlers"
 	"github.com/NoNiiEa/subShare-Discord/src/database"
 	"github.com/NoNiiEa/subShare-Discord/src/easySlip"
+	"github.com/NoNiiEa/subShare-Discord/src/okslip"
 	"github.com/NoNiiEa/subShare-Discord/src/repository"
 	"github.com/NoNiiEa/subShare-Discord/src/service"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	if err := godotenv.Load("config/.env"); err != nil {
-		log.Printf("warning: could not load config/.env: %v", err)
-	}
+    if os.Getenv("APP_ENV") != "production" {
+        err := godotenv.Load()
+        if err != nil {
+            log.Println("No .env file found, relying on system environment variables")
+        }
+    }
 	
 	db, err := database.NewDatabase()
 	if err != nil {
@@ -37,11 +41,15 @@ func main() {
 	slipBaseURL := os.Getenv("EASISLIP_API_URL")
 	slipApiKEY := os.Getenv("EASISLIP_API_TOKEN")
 
+    okSlipBaseURL := os.Getenv("SLIPOK_API_URL")
+    okSlipApiKEY := os.Getenv("SLIPOK_API_KEY")
+
 	groupRepo := repository.NewGroupRepository(db)
 	billRepo := repository.NewBillRepository(db)
 	groupService := service.NewGroupService(groupRepo, billRepo)
 	easySlipClient := easyslip.NewClient(slipBaseURL, slipApiKEY) 
-	billService := service.NewBillService(billRepo, groupRepo, easySlipClient)
+    okSlipClient := okslip.NewClient(okSlipBaseURL, okSlipApiKEY)
+	billService := service.NewBillService(billRepo, groupRepo, easySlipClient, okSlipClient)
 	groupHandler := handlers.NewGroupHandler(groupService)
 	billHandler := handlers.NewBillHandler(billService)
 
@@ -65,7 +73,7 @@ func main() {
 func startDailyPaymentReset(ctx context.Context, svc service.GroupService) {
     go func() {
         // Ticker: Check every hour (or every 30 mins to be safe)
-        ticker := time.NewTicker(time.Hour) 
+        ticker := time.NewTicker(time.Hour)
         defer ticker.Stop()
 
         // Initialize lastDay to current day so we don't run immediately on startup

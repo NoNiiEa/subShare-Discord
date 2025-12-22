@@ -10,7 +10,11 @@ services:
       - PORT=8080
       - EASISLIP_API_URL=${EASISLIP_API_URL}
       - EASISLIP_API_TOKEN=${EASISLIP_API_TOKEN}
+      - SLIPOK_API_URL=${SLIPOK_API_URL}
+      - SLIPOK_API_KEY=${SLIPOK_API_KEY}
       - API_SECRET_TOKEN=${BACKEND_API_KEY}
+      - TZ=Asia/Bangkok
+      - APP_ENV=production
     volumes:
       - ./backend/data:/app/data
     working_dir: /app
@@ -30,6 +34,7 @@ services:
       - BACKEND_API_KEY=${BACKEND_API_KEY}
       - DEVELOPMENT_GUILD_ID=${DEVELOPMENT_GUILD_ID}
       - DEVELOPER=${DEVELOPER}
+      - TZ=Asia/Bangkok
     depends_on:
       - backend
     networks:

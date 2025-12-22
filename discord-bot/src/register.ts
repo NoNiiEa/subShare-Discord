@@ -13,7 +13,7 @@ interface SlashCommandFile {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const registerCommands = async () => {
+export const registerCommands = async () => {
     const token = config.DISCORD_TOKEN;
     const clientId = config.DISCORD_CLIENT_ID;
     const guildId = config.DEVELOPMENT_GUILD_ID || "";
@@ -77,5 +77,3 @@ const registerCommands = async () => {
         console.error(error);
     }
 }
-
-registerCommands();
