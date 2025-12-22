@@ -9,6 +9,7 @@ import { executeCreate } from "./create.js";
 import { executeView, autocompleteView } from "./view.js";
 import { executeInvite } from "./invite.js";
 import { executeAccept } from "./accept.js";
+import { autocompleteEdit, executeEdit } from "./edit.js";
 import { executeDelete, autocompleteDelete } from "./delete.js";
 
 export default {
@@ -97,6 +98,56 @@ export default {
                         .setRequired(true)
                         .setAutocomplete(true)
                 )
+        )
+        .addSubcommand((subcommand) => 
+            subcommand
+                .setName("edit")
+                .setDescription("Edit your group")
+                .addStringOption((option) =>
+                    option
+                        .setName("group")
+                        .setDescription("Select a group to delete")
+                        .setRequired(true)
+                        .setAutocomplete(true)
+                )
+                .addStringOption((option) =>
+                    option
+                        .setName("name")
+                        .setDescription("Group name (e.g. Netflix Squad)")
+                        .setRequired(false)
+                )
+                .addIntegerOption((option) =>
+                    option
+                        .setName("amount")
+                        .setDescription("Total amount (e.g. 399)")
+                        .setRequired(false)
+                        .setMinValue(1)
+                )
+                .addIntegerOption((option) =>
+                    option
+                        .setName("due_day")
+                        .setDescription("Due day of month (1–31)")
+                        .setRequired(false)
+                        .setMinValue(1)
+                        .setMaxValue(31)
+                )
+                .addStringOption((option) =>
+                    option
+                        .setName("payment_method")
+                        .setDescription("Payment method")
+                        .setRequired(false)
+                        .addChoices(
+                            { name: "Bank account", value: "BANKAC" },
+                            { name: "PromptPay", value: "MSISDN" },
+                        )
+                )
+                .addStringOption((option) =>
+                    option
+                        .setName("account")
+                        .setDescription("Account / phone number")
+                        .setRequired(false)
+                )
+
         ),
 
     async execute(interaction: ChatInputCommandInteraction) {
@@ -118,6 +169,9 @@ export default {
             case "delete":
                 await executeDelete(interaction);
                 break;
+            case "edit":
+                await executeEdit(interaction);
+                break;
         }
     },
 
@@ -130,6 +184,9 @@ export default {
                 break;
             case "delete":
                 await autocompleteDelete(interaction);
+                break;
+            case "edit":
+                await autocompleteEdit(interaction);
                 break;
         }
     }

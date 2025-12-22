@@ -72,7 +72,7 @@ export const registerCommands = async () => {
                 { body: commands },
             );
         }
-        console.log(`Successfully reloaded application (/) commands.`);
+        console.log(`Successfully reloaded application (/) commands to ClientID: ${clientId}`);
     } catch (error) {
         console.error(error);
     }

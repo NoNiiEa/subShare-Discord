@@ -19,6 +19,16 @@ export interface CreateGroupRequest {
   };
 }
 
+export interface UpdateGroupRequest {
+  name: string;
+  amount: number | null;
+  due_day: number | null;
+  payment: {
+    method: string;
+    account: string;
+  }
+}
+
 export interface GroupMember {
   member_id: string;
   dept: number;
