@@ -341,10 +341,18 @@ func (s *groupService) Update(ctx context.Context, groupId int, groupUpdate *mod
     }
 
     if groupUpdate.Amount > 0 {
-        existing.Amount = groupUpdate.Amount
-        if len(existing.Members) > 0 {
-            existing.AmountPerMember = existing.Amount / len(existing.Members)
+        activeMemberCount := 0
+        for _, m := range existing.Members {
+            if m.Status == models.MemberStatusActive {
+                activeMemberCount++
+            }
         }
+        if activeMemberCount > 0 {
+            existing.AmountPerMember = existing.Amount / activeMemberCount
+        } else {
+            existing.AmountPerMember = 0
+        }
+
     }
 
     if groupUpdate.DueDay >= 1 && groupUpdate.DueDay <= 31 {
