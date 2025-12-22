@@ -137,7 +137,7 @@ func (h *BillHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	err := h.service.Create(r.Context(), &b)
 	if err != nil {
-		helper.WriteError(w, http.StatusInternalServerError, err.Error())
+		helper.WriteError(w, http.StatusInternalServerError, "Failed to create bill")
 		return
 	}
 

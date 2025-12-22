@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,8 +12,8 @@ import (
 	"github.com/NoNiiEa/subShare-Discord/src/exception"
 	"github.com/NoNiiEa/subShare-Discord/src/helper"
 	"github.com/NoNiiEa/subShare-Discord/src/models"
-	"github.com/NoNiiEa/subShare-Discord/src/repository"
 	"github.com/NoNiiEa/subShare-Discord/src/okslip"
+	"github.com/NoNiiEa/subShare-Discord/src/repository"
 )
 
 type BillService interface {
@@ -107,10 +109,12 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
 
     // 1. Get Bill and Group Data
     b, err := s.repo.GetById(ctx, billId)
-    if err != nil || b == nil {
-        if b == nil { return nil, exception.ErrBillNotFound }
-        return nil, err
-    }
+    if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, exception.ErrBillNotFound
+		}
+		return nil, err
+	}
 
     if b.Status == models.BillStatusVerified {
         return nil, exception.ErrBillAlreadyPaid
@@ -174,7 +178,10 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
     b.SubmittedAt = &now
     b.Status = models.BillStatusVerified
 
-    billSlipJson, _ := json.Marshal(billSlip)
+    billSlipJson, err := json.Marshal(billSlip)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize slip data: %w", err)
+	}
     b.ProofJSON = string(billSlipJson)
 
     // 6. Handle Underpayment
@@ -193,7 +200,9 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
             CreatedAt:   now,
             UpdatedAt:   now,
         }
-        _ = s.repo.Create(ctx, &remainingBill)
+        if err := s.repo.Create(ctx, &remainingBill); err != nil {
+    		return nil, fmt.Errorf("failed to create underpayment bill: %w", err)
+		}
     }
 
     // 7. Reduce Member Debt

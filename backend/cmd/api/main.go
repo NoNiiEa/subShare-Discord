@@ -12,12 +12,19 @@ import (
 	"github.com/NoNiiEa/subShare-Discord/src/api/handlers"
 	"github.com/NoNiiEa/subShare-Discord/src/database"
 	"github.com/NoNiiEa/subShare-Discord/src/easySlip"
+	"github.com/NoNiiEa/subShare-Discord/src/okslip"
 	"github.com/NoNiiEa/subShare-Discord/src/repository"
 	"github.com/NoNiiEa/subShare-Discord/src/service"
-    "github.com/NoNiiEa/subShare-Discord/src/okslip"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+    if os.Getenv("APP_ENV") != "production" {
+        err := godotenv.Load()
+        if err != nil {
+            log.Println("No .env file found, relying on system environment variables")
+        }
+    }
 	
 	db, err := database.NewDatabase()
 	if err != nil {
