@@ -1,6 +1,7 @@
 import { ChatInputCommandInteraction, MessageFlags, EmbedBuilder, AutocompleteInteraction, } from "discord.js";
 import { BackendClient } from "../../api/index.js";
 import { config } from "../../config.js";
+import { GroupResponse } from "../../api/types.js";
 
 export async function autocompleteEdit(interaction: AutocompleteInteraction) {
     const focusedValue = interaction.options.getFocused();
