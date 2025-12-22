@@ -263,7 +263,7 @@ func (s *groupService) CreateBillCycle(ctx context.Context, g *models.Group) err
     for i := range g.Members {
         m := &g.Members[i] 
 
-        if m.Status == models.MemberStatusLeft || m.MemberID == g.OwnerDiscordID {
+        if m.Status != models.MemberStatusActive || m.MemberID == g.OwnerDiscordID {
             continue
         }
 
