@@ -11,7 +11,7 @@ export class BaseAPI {
 
   protected async request<T>(
     endpoint: string,
-    method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
+    method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" = "GET",
     body?: unknown
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;

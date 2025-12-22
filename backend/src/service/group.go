@@ -21,6 +21,7 @@ type GroupService interface {
 	CreateBillCycle(ctx context.Context, g *models.Group) error
 	GetByDueDay(ctx context.Context, dueDay int) ([]models.Group, error)
 	DeleteById(ctx context.Context, groupId int, userId string) error
+	Update(ctx context.Context, groupId int, group *models.Group) error
 }
 
 type groupService struct {
@@ -263,7 +264,7 @@ func (s *groupService) CreateBillCycle(ctx context.Context, g *models.Group) err
     for i := range g.Members {
         m := &g.Members[i] 
 
-        if m.Status == models.MemberStatusLeft || m.MemberID == g.OwnerDiscordID {
+        if m.Status != models.MemberStatusActive || m.MemberID == g.OwnerDiscordID {
             continue
         }
 
@@ -327,4 +328,44 @@ func (s *groupService) DeleteById(ctx context.Context, groupId int, userId strin
 	}
 
 	return s.repo.DeleteById(ctx, groupId)
+}
+
+func (s *groupService) Update(ctx context.Context, groupId int, groupUpdate *models.Group) error {
+    existing, err := s.repo.GetById(ctx, groupId)
+    if err != nil || existing == nil {
+        return exception.ErrGroupNotFound
+    }
+
+    if groupUpdate.Name != "" { 
+        existing.Name = groupUpdate.Name 
+    }
+
+    if groupUpdate.Amount > 0 {
+        activeMemberCount := 0
+        for _, m := range existing.Members {
+            if m.Status == models.MemberStatusActive {
+                activeMemberCount++
+            }
+        }
+        if activeMemberCount > 0 {
+            existing.AmountPerMember = existing.Amount / activeMemberCount
+        } else {
+            existing.AmountPerMember = 0
+        }
+
+    }
+
+    if groupUpdate.DueDay >= 1 && groupUpdate.DueDay <= 31 {
+        existing.DueDay = groupUpdate.DueDay
+    }
+
+	if groupUpdate.Payment.Account != "" {
+        existing.Payment.Account = groupUpdate.Payment.Account
+    }
+
+	if groupUpdate.Payment.Method != "" {
+		existing.Payment.Method = groupUpdate.Payment.Method
+	}
+
+    return s.repo.Update(ctx, groupId, existing)
 }

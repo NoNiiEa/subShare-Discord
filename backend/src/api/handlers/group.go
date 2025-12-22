@@ -272,3 +272,41 @@ func (h *GroupHandler) DeleteById(w http.ResponseWriter, r *http.Request) {
 
 	helper.WriteJSON(w, http.StatusOK, nil)
 }
+
+func (h *GroupHandler) Update(w http.ResponseWriter, r *http.Request) {
+    groupIdStr := r.PathValue("groupId")
+
+    groupId, err := strconv.Atoi(groupIdStr)
+    if err != nil {
+        helper.WriteError(w, http.StatusBadRequest, "invalid ID format")
+        return
+    }
+    var req schemas.UpdateGroupRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        helper.WriteError(w, http.StatusBadRequest, "invalid JSON body")
+        return
+    }
+
+    groupUpdate := &models.Group{
+        Name:    req.Name,
+        Amount:  req.Amount,
+        DueDay:  req.DueDay,
+        Payment: req.Payment,
+    }
+
+    if err := h.service.Update(r.Context(), groupId, groupUpdate); err != nil {
+        switch {
+        case errors.Is(err, exception.ErrGroupNotFound):
+            helper.WriteError(w, http.StatusNotFound, err.Error())
+        case errors.Is(err, exception.ErrEmptyName), errors.Is(err, exception.ErrInvalidDueDay):
+            helper.WriteError(w, http.StatusBadRequest, err.Error())
+        default:
+            helper.WriteError(w, http.StatusInternalServerError, "internal server error")
+        }
+        return
+    }
+
+    helper.WriteJSON(w, http.StatusOK, map[string]string{
+        "message": "group updated successfully",
+    })
+}
