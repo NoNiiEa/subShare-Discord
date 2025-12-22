@@ -66,13 +66,14 @@ export const registerCommands = async () => {
                 Routes.applicationGuildCommands(clientId, guildId),
                 { body: commands },
             );
+            console.log(`Successfully reloaded application (/) commands to ClientID: ${clientId} with development mode`);
         } else {
             await rest.put(
                 Routes.applicationCommands(clientId),
                 { body: commands },
             );
+            console.log(`Successfully reloaded application (/) commands to ClientID: ${clientId}`);
         }
-        console.log(`Successfully reloaded application (/) commands to ClientID: ${clientId}`);
     } catch (error) {
         console.error(error);
     }
