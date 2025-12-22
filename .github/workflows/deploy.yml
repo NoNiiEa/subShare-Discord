@@ -18,7 +18,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ~/subShare
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             
             # Create the local .env file from GitHub Secrets if needed
             echo "${{ secrets.ENV_FILE }}" > .env
