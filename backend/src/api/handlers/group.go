@@ -298,11 +298,11 @@ func (h *GroupHandler) Update(w http.ResponseWriter, r *http.Request) {
     if err := h.service.Update(r.Context(), groupId, groupUpdate); err != nil {
         switch {
         case errors.Is(err, exception.ErrGroupNotFound):
-            http.Error(w, err.Error(), http.StatusNotFound)
+            helper.WriteError(w, http.StatusNotFound, err.Error())
         case errors.Is(err, exception.ErrEmptyName), errors.Is(err, exception.ErrInvalidDueDay):
-            http.Error(w, err.Error(), http.StatusBadRequest)
+            helper.WriteError(w, http.StatusBadRequest, err.Error())
         default:
-            http.Error(w, "internal server error", http.StatusInternalServerError)
+            helper.WriteError(w, http.StatusInternalServerError, "internal server error")
         }
         return
     }
