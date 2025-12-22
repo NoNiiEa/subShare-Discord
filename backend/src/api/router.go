@@ -14,7 +14,7 @@ func NewRouter(groupHandler *handlers.GroupHandler, billHandler *handlers.BillHa
 	// (Go 1.22+ supports "METHOD /path" syntax)
 	mux.HandleFunc("POST /groups", groupHandler.Create)
 	mux.HandleFunc("GET /groups/{groupId}", groupHandler.GetById)
-	mux.HandleFunc("POST /groups/{groupId}", groupHandler.Update)
+mux.HandleFunc("PATCH /groups/{groupId}", groupHandler.Update)
 	mux.HandleFunc("DELETE /groups/{groupId}/member/{userId}", groupHandler.DeleteById)
 	mux.HandleFunc("POST /groups/{groupId}/invite", groupHandler.Invite)
 	mux.HandleFunc("POST /groups/{groupId}/accept-invite", groupHandler.AcceptInvite)
