@@ -40,6 +40,6 @@ export class Group extends BaseAPI {
     }
 
     async update(payload: UpdateGroupRequest, groupId: number): Promise<void> {
-        return await this.request<void>(`/groups/${groupId}`, "POST", payload)
+        return await this.request<void>(`/groups/${groupId}`, "PATCH", payload)
     }
 }
