@@ -3,14 +3,16 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/NoNiiEa/subShare-Discord/src/exception"
+	"github.com/NoNiiEa/subShare-Discord/src/helper"
 	"github.com/NoNiiEa/subShare-Discord/src/models"
 	"github.com/NoNiiEa/subShare-Discord/src/schemas"
 	"github.com/NoNiiEa/subShare-Discord/src/service"
-	"github.com/NoNiiEa/subShare-Discord/src/exception"
-	"github.com/NoNiiEa/subShare-Discord/src/helper"
 )
 
 type GroupHandler struct {
@@ -308,5 +310,31 @@ func (h *GroupHandler) Update(w http.ResponseWriter, r *http.Request) {
 
     helper.WriteJSON(w, http.StatusOK, map[string]string{
         "message": "group updated successfully",
+    })
+}
+
+func (h *GroupHandler) DailyPaymentReset(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+    day := now.Day()
+
+	log.Printf("Starting bill cycle for day %d", day)
+	groups, err := h.service.GetByDueDay(r.Context(), day)
+	if err != nil {
+		log.Printf("Error fetching groups for day %d: %v", day, err)
+		helper.WriteError(w, 500, "There is error reset payment")
+		return
+	}
+
+	for _, g := range(groups) {
+		if err := h.service.CreateBillCycle(r.Context(), &g); err != nil {
+			log.Printf("Failed to create bill cycle for Group ID %d: %v", g.ID, err)
+			helper.WriteError(w, 500, "Failed to create bill cycle for Group")
+			return
+		}
+	}
+
+	log.Printf("Completed bill cycle for day %d", day)
+	helper.WriteJSON(w, http.StatusOK, map[string]string{
+        "message": "Completed bill cycle",
     })
 }
