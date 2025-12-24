@@ -25,7 +25,7 @@ type GroupService interface {
 }
 
 type groupService struct {
-	repo repository.GroupRepository
+	repo     repository.GroupRepository
 	billRepo repository.BillRepository
 }
 
@@ -51,9 +51,9 @@ func (s *groupService) CreateGroup(ctx context.Context, group *models.Group) (*m
 	var members []models.GroupMember
 	member := models.GroupMember{
 		MemberID: group.OwnerDiscordID,
-		Dept: 0,
-		Status: models.MemberStatusActive,
-		Payment: models.PaymentStatusPaid,
+		Dept:     0,
+		Status:   models.MemberStatusActive,
+		Payment:  models.PaymentStatusPaid,
 	}
 
 	members = append(members, member)
@@ -85,8 +85,8 @@ func (s *groupService) GetByGuildIdAndUserId(ctx context.Context, guildId string
 
 	var res []models.Group
 
-	for _, g := range(groups) {
-		for _, member := range(g.Members) {
+	for _, g := range groups {
+		for _, member := range g.Members {
 			if member.MemberID == userId {
 				res = append(res, g)
 				break
@@ -109,7 +109,7 @@ func (s *groupService) GetByGuildIdAndUserIdOwn(ctx context.Context, guildId str
 
 	var res []models.Group
 
-	for _, g := range(groups) {
+	for _, g := range groups {
 		if g.OwnerDiscordID == userId {
 			res = append(res, g)
 		}
@@ -136,24 +136,24 @@ func (s *groupService) InviteToGroup(ctx context.Context, groupId int, userId st
 		return nil, exception.ErrNoPermission
 	}
 
-	for _, m := range(g.Members) {
-		for _, newMemId := range(memberIds) {
-			if m.MemberID == newMemId && m.Status == models.MemberStatusActive{
+	for _, m := range g.Members {
+		for _, newMemId := range memberIds {
+			if m.MemberID == newMemId && m.Status == models.MemberStatusActive {
 				return nil, exception.ErrAlreadyMember
 			}
 		}
 	}
 
-	for _, m_id := range(memberIds) {
+	for _, m_id := range memberIds {
 		if m_id == "" {
 			return nil, exception.ErrInvalidDiscordId
 		}
 
 		var newMember = models.GroupMember{
 			MemberID: m_id,
-			Dept: 0,
-			Status: models.MemberStatusInvited,
-			Payment: models.PaymentStatusPaid,
+			Dept:     0,
+			Status:   models.MemberStatusInvited,
+			Payment:  models.PaymentStatusPaid,
 		}
 
 		g.Members = append(g.Members, newMember)
@@ -174,8 +174,8 @@ func (s *groupService) GetUserPendingInvite(ctx context.Context, userId string, 
 
 	var res []models.Group
 
-	for _, g := range(groups) {
-		for _, m := range(g.Members) {
+	for _, g := range groups {
+		for _, m := range g.Members {
 			if m.MemberID == userId && m.Status == models.MemberStatusInvited {
 				res = append(res, g)
 				break
@@ -197,7 +197,7 @@ func (s *groupService) AcceptInvite(ctx context.Context, groupId int, userId str
 	}
 
 	var index int = -1
-	for i, m := range(g.Members) {
+	for i, m := range g.Members {
 		if m.MemberID == userId {
 			if m.Status == models.MemberStatusActive {
 				return nil, exception.ErrAlreadyMember
@@ -233,7 +233,7 @@ func (s *groupService) DeclineInvite(ctx context.Context, groupId int, userId st
 	}
 
 	var index int = -1
-	for i, m := range(g.Members) {
+	for i, m := range g.Members {
 		if m.MemberID == userId {
 			if m.Status == models.MemberStatusActive {
 				return nil, exception.ErrAlreadyMember
@@ -257,45 +257,45 @@ func (s *groupService) DeclineInvite(ctx context.Context, groupId int, userId st
 }
 
 func (s *groupService) CreateBillCycle(ctx context.Context, g *models.Group) error {
-    now := time.Now().UTC()
-    year := now.Year()
-    month := int(now.Month())
+	now := time.Now().UTC()
+	year := now.Year()
+	month := int(now.Month())
 
-    for i := range g.Members {
-        m := &g.Members[i] 
+	for i := range g.Members {
+		m := &g.Members[i]
 
-        if m.Status != models.MemberStatusActive || m.MemberID == g.OwnerDiscordID {
-            continue
-        }
+		if m.Status != models.MemberStatusActive || m.MemberID == g.OwnerDiscordID {
+			continue
+		}
 
-        m.Payment = models.PaymentStatusNotPaid
-        m.Dept += g.AmountPerMember
+		m.Payment = models.PaymentStatusNotPaid
+		m.Dept += g.AmountPerMember
 
-        b := models.Bill{
-            GroupID:     g.ID,
-            GuildID:     g.DiscordGuildID,
-            MemberID:    m.MemberID,
-            Year:        year,
-            Month:       month,
-            AmountDue:   g.AmountPerMember, // Changed to PerMember (Check if this is correct for you)
-            Currency:    "THB",
-            Status:      models.BillStatusPending,
-            Description: "Monthly Cycle", // Optional: Add a default description
-            ProofJSON:   "",
-            CreatedAt:   now,
-            UpdatedAt:   now,
-        }
+		b := models.Bill{
+			GroupID:     g.ID,
+			GuildID:     g.DiscordGuildID,
+			MemberID:    m.MemberID,
+			Year:        year,
+			Month:       month,
+			AmountDue:   g.AmountPerMember, // Changed to PerMember (Check if this is correct for you)
+			Currency:    "THB",
+			Status:      models.BillStatusPending,
+			Description: "Monthly Cycle", // Optional: Add a default description
+			ProofJSON:   "",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
 
-        if err := s.billRepo.Create(ctx, &b); err != nil {
-            return err
-        }
-    }
+		if err := s.billRepo.Create(ctx, &b); err != nil {
+			return err
+		}
+	}
 
-    if err := s.repo.Update(ctx, g.ID, g); err != nil {
-        return err
-    }
+	if err := s.repo.Update(ctx, g.ID, g); err != nil {
+		return err
+	}
 
-    return nil
+	return nil
 }
 
 func (s *groupService) GetByDueDay(ctx context.Context, dueDay int) ([]models.Group, error) {
@@ -321,7 +321,7 @@ func (s *groupService) DeleteById(ctx context.Context, groupId int, userId strin
 		return err
 	}
 
-	for _, b := range(bills) {
+	for _, b := range bills {
 		if err := s.billRepo.DeleteById(ctx, b.ID); err != nil {
 			return err
 		}
@@ -331,41 +331,42 @@ func (s *groupService) DeleteById(ctx context.Context, groupId int, userId strin
 }
 
 func (s *groupService) Update(ctx context.Context, groupId int, groupUpdate *models.Group) error {
-    existing, err := s.repo.GetById(ctx, groupId)
-    if err != nil || existing == nil {
-        return exception.ErrGroupNotFound
-    }
+	existing, err := s.repo.GetById(ctx, groupId)
+	if err != nil || existing == nil {
+		return exception.ErrGroupNotFound
+	}
 
-    if groupUpdate.Name != "" { 
-        existing.Name = groupUpdate.Name 
-    }
+	if groupUpdate.Name != "" {
+		existing.Name = groupUpdate.Name
+	}
 
-    if groupUpdate.Amount > 0 {
-        activeMemberCount := 0
-        for _, m := range existing.Members {
-            if m.Status == models.MemberStatusActive {
-                activeMemberCount++
-            }
-        }
-        if activeMemberCount > 0 {
-            existing.AmountPerMember = existing.Amount / activeMemberCount
-        } else {
-            existing.AmountPerMember = 0
-        }
+	if groupUpdate.Amount > 0 {
+		existing.Amount = groupUpdate.Amount
+		activeMemberCount := 0
+		for _, m := range existing.Members {
+			if m.Status == models.MemberStatusActive {
+				activeMemberCount++
+			}
+		}
+		if activeMemberCount > 0 {
+			existing.AmountPerMember = existing.Amount / activeMemberCount
+		} else {
+			existing.AmountPerMember = 0
+		}
 
-    }
+	}
 
-    if groupUpdate.DueDay >= 1 && groupUpdate.DueDay <= 31 {
-        existing.DueDay = groupUpdate.DueDay
-    }
+	if groupUpdate.DueDay >= 1 && groupUpdate.DueDay <= 31 {
+		existing.DueDay = groupUpdate.DueDay
+	}
 
 	if groupUpdate.Payment.Account != "" {
-        existing.Payment.Account = groupUpdate.Payment.Account
-    }
+		existing.Payment.Account = groupUpdate.Payment.Account
+	}
 
 	if groupUpdate.Payment.Method != "" {
 		existing.Payment.Method = groupUpdate.Payment.Method
 	}
 
-    return s.repo.Update(ctx, groupId, existing)
+	return s.repo.Update(ctx, groupId, existing)
 }
