@@ -32,6 +32,8 @@ func NewRouter(groupHandler *handlers.GroupHandler, billHandler *handlers.BillHa
 
 	mux.HandleFunc("POST /bill/pay", billHandler.Pay)
 	mux.HandleFunc("POST /bill/create", billHandler.Create)
+
+	mux.HandleFunc("POST /cron/reset-payment", groupHandler.DailyPaymentReset)
 	
 	return middleware.RequestLogger(
         middleware.AuthMiddleware(mux),
