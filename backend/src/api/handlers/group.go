@@ -328,8 +328,6 @@ func (h *GroupHandler) DailyPaymentReset(w http.ResponseWriter, r *http.Request)
 	for _, g := range(groups) {
 		if err := h.service.CreateBillCycle(r.Context(), &g); err != nil {
 			log.Printf("Failed to create bill cycle for Group ID %d: %v", g.ID, err)
-			helper.WriteError(w, 500, "Failed to create bill cycle for Group")
-			return
 		}
 	}
 
