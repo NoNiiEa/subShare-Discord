@@ -33,7 +33,7 @@ func (r *slipRepo) Create(ctx context.Context, s *models.Slip) error {
 
 	_, err := r.db.ExecContext(ctx, q, s.TransRef, s.SubmittedAt)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	return nil
