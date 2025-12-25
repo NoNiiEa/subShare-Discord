@@ -30,12 +30,19 @@ type BillService interface {
 type billService struct {
 	repo           repository.BillRepository
 	groupRepo      repository.GroupRepository
+	slipRepo	   repository.SlipRepository
 	easySlipClient easyslip.EasySlipClient
 	okSlipClient   okslip.OkSlipClient
 }
 
-func NewBillService(repo repository.BillRepository, groupRepo repository.GroupRepository, easySlipClient easyslip.EasySlipClient, okSlipClient okslip.OkSlipClient) BillService {
-	return &billService{repo: repo, groupRepo: groupRepo, easySlipClient: easySlipClient, okSlipClient: okSlipClient}
+func NewBillService(
+	repo repository.BillRepository, 
+	groupRepo repository.GroupRepository, 
+	slipRepo repository.SlipRepository,
+	easySlipClient easyslip.EasySlipClient, 
+	okSlipClient okslip.OkSlipClient,
+	) BillService {
+	return &billService{repo: repo, groupRepo: groupRepo, easySlipClient: easySlipClient, okSlipClient: okSlipClient, slipRepo: slipRepo}
 }
 
 func (s *billService) Create(ctx context.Context, b *models.Bill) error {
@@ -184,51 +191,38 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
         return nil, exception.ErrWrongReciever
     }
 
+	existingSlip, err := s.slipRepo.GetByTransRef(ctx, billSlip.Data.TransRef)
+    if err != nil {
+        return nil, err
+    }
+    if existingSlip != nil {
+        return nil, exception.ErrDupeSlip
+    }
+
+    amountPaid = billSlip.Data.Amount 
+    isUnderpaid := amountPaid < float64(b.AmountDue)
+
     b.UpdatedAt = now
     b.SubmittedAt = &now
     b.Status = models.BillStatusVerified
-
-    billSlipJson, err := json.Marshal(billSlip)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize slip data: %w", err)
-	}
+    
+    billSlipJson, _ := json.Marshal(billSlip)
     b.ProofJSON = string(billSlipJson)
-
-    if amountPaid < float64(b.AmountDue) {
-        remainingAmount := b.AmountDue - int(amountPaid)
-        remainingBill := models.Bill{
-            GroupID:     g.ID,
-            GuildID:     g.DiscordGuildID,
-            MemberID:    userId,
-            Year:        now.Year(),
-            Month:       int(now.Month()),
-            AmountDue:   remainingAmount,
-            Currency:    "THB",
-            Status:      models.BillStatusPending,
-            Description: "Remaining balance (Underpaid)",
-            CreatedAt:   now,
-            UpdatedAt:   now,
-        }
-        if err := s.repo.Create(ctx, &remainingBill); err != nil {
-    		return nil, fmt.Errorf("failed to create underpayment bill: %w", err)
-		}
-    }
 
     memberFound := false
     for i := range g.Members {
         m := &g.Members[i]
         if m.MemberID == userId {
-            debtReduction := b.AmountDue
-            if debtReduction > m.Dept {
-                debtReduction = m.Dept
+            actualReduction := int(amountPaid)
+            if actualReduction > m.Dept {
+                actualReduction = m.Dept
             }
-            m.Dept -= debtReduction
+            m.Dept -= actualReduction
             
             if m.Dept <= 0 {
                 m.Dept = 0
                 m.Payment = models.PaymentStatusPaid
             }
-
             if m.Status == models.MemberStatusInvited {
                 m.Status = models.MemberStatusActive
             }
@@ -241,10 +235,36 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
         return nil, exception.ErrMemberNotFound
     }
 
+    if isUnderpaid {
+        remainingAmount := b.AmountDue - int(amountPaid)
+        remainingBill := models.Bill{
+            GroupID:     g.ID,
+            GuildID:     g.DiscordGuildID,
+            MemberID:    userId,
+            Year:        b.Year,
+            Month:       b.Month,
+            AmountDue:   remainingAmount,
+            Currency:    "THB",
+            Status:      models.BillStatusPending,
+            Description: fmt.Sprintf("Balance remaining from Bill #%d", b.ID),
+        }
+        if err := s.repo.Create(ctx, &remainingBill); err != nil {
+            return nil, err
+        }
+    }
+
     if err := s.repo.Update(ctx, billId, b); err != nil {
         return nil, err
     }
     if err := s.groupRepo.Update(ctx, g.ID, g); err != nil {
+        return nil, err
+    }
+    
+    slip := models.Slip{
+        TransRef:    billSlip.Data.TransRef,
+        SubmittedAt: &now,
+    }
+    if err := s.slipRepo.Create(ctx, &slip); err != nil {
         return nil, err
     }
 

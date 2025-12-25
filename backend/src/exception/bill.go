@@ -19,4 +19,5 @@ var (
 	ErrWrongReciever   = errors.New("worng reciever.")
 	ErrBillAlreadyPaid = errors.New("bill is already paid")
 	ErrSlipExpired     = errors.New("payment slip is too old. Please upload the slip within 30 minutes of making the transfer.")
+	ErrDupeSlip		   = errors.New("bill is dupe")
 )

@@ -45,10 +45,11 @@ func main() {
 
 	groupRepo := repository.NewGroupRepository(db)
 	billRepo := repository.NewBillRepository(db)
+	slipRepo := repository.NewSlipRepository(db)
 	groupService := service.NewGroupService(groupRepo, billRepo)
 	easySlipClient := easyslip.NewClient(slipBaseURL, slipApiKEY) 
     okSlipClient := okslip.NewClient(okSlipBaseURL, okSlipApiKEY)
-	billService := service.NewBillService(billRepo, groupRepo, easySlipClient, okSlipClient)
+	billService := service.NewBillService(billRepo, groupRepo, slipRepo, easySlipClient, okSlipClient)
 	groupHandler := handlers.NewGroupHandler(groupService)
 	billHandler := handlers.NewBillHandler(billService)
 
