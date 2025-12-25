@@ -79,10 +79,10 @@ func createTable(db *sql.DB) error {
 	}
 
 	const createSlipTable = `
-	CREATE TABLE IF NOT EXITS slips (
+	CREATE TABLE IF NOT EXIST slips (
 		id 				INTEGER PRIMARY KEY,
 		transRef		TEXT NOT NULL,
-		submitted_at	TEXT,
+		submitted_at	TEXT
 	);
 	`
 
