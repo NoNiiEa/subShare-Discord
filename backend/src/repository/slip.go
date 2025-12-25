@@ -41,7 +41,7 @@ func (r *slipRepo) Create(ctx context.Context, s *models.Slip) error {
 
 func (r *slipRepo) GetByTransRef(ctx context.Context, transRef string) (*models.Slip, error) {
 	const q = `
-	SELECT * FROM slips
+	SELECT id, transRef, submitted_at FROM slips
 	WHERE transRef = ?
 	`
 

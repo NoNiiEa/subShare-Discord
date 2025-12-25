@@ -77,7 +77,7 @@ func (h *BillHandler) Pay(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, exception.ErrSlipExpired):
 			helper.WriteError(w, http.StatusBadRequest, "payment slip is too old. Please upload the slip within 30 minutes of making the transfer.")
 		case errors.Is(err, exception.ErrDupeSlip):
-			helper.WriteError(w, http.StatusBadRequest, "This Slip is already use to other bill.")
+			helper.WriteError(w, http.StatusBadRequest, "This slip has already been used for another bill.")
 		default:
 			helper.WriteError(w, http.StatusInternalServerError, err.Error())
 		}
