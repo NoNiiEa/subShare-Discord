@@ -40,6 +40,17 @@ services:
     networks:
       - subshare-network
     restart: unless-stopped
+  tunnel:
+    container_name: subshare-tunnel
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run
+    networks:
+      - subshare-network
+    depends_on:
+      - backend
 
 networks:
   subshare-network:
