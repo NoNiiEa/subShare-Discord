@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	easyslip "github.com/NoNiiEa/subShare-Discord/src/easySlip"
@@ -176,11 +177,28 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
         slipAccount = acc.Value
     }
 
-    slipAccount = helper.ExtractNumericCharacters(slipAccount)
+    // ... your method detection logic ...
 
-    // Verify if the receiver on the slip matches the Group's registered payment info
-    // Note: okSlip returns masked accounts (xxx-x-x0209-x), so we compare Last4
-    if g.Payment.Method != method || helper.Last4(g.Payment.Account) != helper.Last4(slipAccount) {
+    // 1. Extract only the digits from the slip value (e.g., "xxx-x-x3464-x" -> "3464")
+    slipDigits := helper.ExtractNumericCharacters(slipAccount)
+
+    // 2. Extract only the digits from your DB record (e.g., "1234567890" -> "1234567890")
+    dbDigits := helper.ExtractNumericCharacters(g.Payment.Account)
+
+    // 3. Compare based on what's available
+    match := false
+    if method == models.PromptPay {
+        // PromptPay (Phone/ID) is usually not masked, compare fully
+        match = dbDigits == slipDigits
+    } else {
+        // For BANKAC, OkSlip gives us a partial fragment.
+        // We check if the digits we got from the slip exist at the END of our DB account.
+        // Usually, 4 digits is the standard fragment provided.
+        match = strings.HasSuffix(dbDigits, slipDigits) || 
+                (len(dbDigits) >= 5 && strings.Contains(dbDigits, slipDigits))
+    }
+
+    if g.Payment.Method != method || !match {
         return nil, exception.ErrWrongReciever
     }
 
