@@ -28,7 +28,7 @@ type Data struct {
 	PaidLocalAmount   float64   `json:"paidLocalAmount,omitempty"`
 	PaidLocalCurrency string    `json:"paidLocalCurrency,omitempty"`
 	CountryCode       string    `json:"countryCode"`
-	TransFeeAmount    string    `json:"transFeeAmount,omitempty"`
+	TransFeeAmount 	  string    `json:"transFeeAmount,string,omitempty"`
 	Ref1              string    `json:"ref1,omitempty"`
 	Ref2              string    `json:"ref2,omitempty"`
 	Ref3              string    `json:"ref3,omitempty"`
