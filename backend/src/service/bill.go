@@ -206,7 +206,11 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
     b.SubmittedAt = &now
     b.Status = models.BillStatusVerified
     
-    billSlipJson, _ := json.Marshal(billSlip)
+    billSlipJson, err := json.Marshal(billSlip)
+	if err != nil {
+		return nil, err
+	}
+	
     b.ProofJSON = string(billSlipJson)
 
     memberFound := false
