@@ -81,7 +81,7 @@ func createTable(db *sql.DB) error {
 	const createSlipTable = `
 	CREATE TABLE IF NOT EXISTS slips (
 		id 				INTEGER PRIMARY KEY,
-		transRef		TEXT NOT NULL,
+		transRef		TEXT NOT NULL UNIQUE,
 		submitted_at	TEXT
 	);
 	`
