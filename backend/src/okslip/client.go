@@ -4,11 +4,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"time"
 )
+
+type APIErrorResponse struct {
+    Code    int    `json:"code"`
+    Message string `json:"message"`
+}
+
+func (e *APIErrorResponse) Error() string {
+    return fmt.Sprintf("OkSlip Error [%d]: %s", e.Code, e.Message)
+}
 
 type OkSlipClient interface {
 	CheckSlip(ctx context.Context, slipUrl string) (*Response, error)
@@ -51,6 +62,12 @@ func (c *okSlipClient) CheckSlip(ctx context.Context, slipUrl string) (*Response
 
 	resp, err := c.httpClient.Do(req)
     if err != nil {
+        if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+            return nil, fmt.Errorf("okslip request timed out: %w", err)
+        }
+        if errors.Is(err, context.DeadlineExceeded) {
+            return nil, fmt.Errorf("okslip context deadline exceeded: %w", err)
+        }
         return nil, err
     }
     defer resp.Body.Close()
@@ -60,14 +77,28 @@ func (c *okSlipClient) CheckSlip(ctx context.Context, slipUrl string) (*Response
         return nil, err
     }
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("okslip API request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-
 	var result Response
-	if err := json.Unmarshal(bodyBytes, &result); err != nil {
-        return nil, fmt.Errorf("failed to parse response: %v", err)
+    if err := json.Unmarshal(bodyBytes, &result); err == nil {
+        // If the API returns 'success: false' but a 200 OK
+        if !result.Success {
+            // Check if there is an error code in the body
+            var apiErr APIErrorResponse
+            if json.Unmarshal(bodyBytes, &apiErr) == nil && apiErr.Code != 0 {
+                return nil, &apiErr
+            }
+        }
+        
+        if resp.StatusCode == http.StatusOK {
+            return &result, nil
+        }
     }
 
-	return &result, nil
+    // If we reach here, it's a non-200 response or a failed success flag
+    var apiErr APIErrorResponse
+    if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Code != 0 {
+        return nil, &apiErr
+    }
+
+    // Fallback for generic HTTP errors
+    return nil, fmt.Errorf("request failed status %d: %s", resp.StatusCode, string(bodyBytes))
 }

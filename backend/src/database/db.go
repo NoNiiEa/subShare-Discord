@@ -10,20 +10,17 @@ import (
 )
 
 func NewDatabase() (*sql.DB, error) {
-	// Ensure data directory exists
 	dataDir := "data"
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, err
 	}
 
-	// Use proper file path
 	dbPath := filepath.Join(dataDir, "app.db")
 	db, err := sql.Open("sqlite3", dbPath+"?cache=shared&mode=rwc")
 	if err != nil {
 		return nil, err
 	}
 
-	// Verify connection
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
@@ -80,5 +77,19 @@ func createTable(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	return err
+
+	const createSlipTable = `
+	CREATE TABLE IF NOT EXISTS slips (
+		id 				INTEGER PRIMARY KEY,
+		transRef		TEXT NOT NULL UNIQUE,
+		submitted_at	TEXT
+	);
+	`
+
+	_, err = db.Exec(createSlipTable)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

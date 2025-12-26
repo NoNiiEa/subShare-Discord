@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -30,12 +31,19 @@ type BillService interface {
 type billService struct {
 	repo           repository.BillRepository
 	groupRepo      repository.GroupRepository
+	slipRepo	   repository.SlipRepository
 	easySlipClient easyslip.EasySlipClient
 	okSlipClient   okslip.OkSlipClient
 }
 
-func NewBillService(repo repository.BillRepository, groupRepo repository.GroupRepository, easySlipClient easyslip.EasySlipClient, okSlipClient okslip.OkSlipClient) BillService {
-	return &billService{repo: repo, groupRepo: groupRepo, easySlipClient: easySlipClient, okSlipClient: okSlipClient}
+func NewBillService(
+	repo repository.BillRepository, 
+	groupRepo repository.GroupRepository, 
+	slipRepo repository.SlipRepository,
+	easySlipClient easyslip.EasySlipClient, 
+	okSlipClient okslip.OkSlipClient,
+	) BillService {
+	return &billService{repo: repo, groupRepo: groupRepo, easySlipClient: easySlipClient, okSlipClient: okSlipClient, slipRepo: slipRepo}
 }
 
 func (s *billService) Create(ctx context.Context, b *models.Bill) error {
@@ -117,7 +125,6 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
         return nil, exception.ErrNoUrl
     }
 
-    // 1. Get Bill and Group Data
     b, err := s.repo.GetById(ctx, billId)
     if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -142,114 +149,104 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
 		return nil, err
 	}
 
-    // 2. Call the NEW okSlipClient
     billSlip, err := s.okSlipClient.CheckSlip(ctx, proofUrl)
     if err != nil {
+		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline") {
+        	return nil, exception.ErrTimeOut
+    	}
+
+        var apiErr *okslip.APIErrorResponse
+        if errors.As(err, &apiErr) {
+            switch apiErr.Code {
+            case 1007: // No QR Code
+                return nil, exception.ErrNoQRCode
+            case 1011: // QR Code Expired or Invalid
+                return nil, exception.ErrSlipExpiredOrInvalid
+            case 1012: // Duplicate Slip detected by Provider
+                return nil, exception.ErrDupeSlip
+            default:
+                // Log the unhandled code and return a generic payment error
+                log.Printf("Unhandled OkSlip Code: %d - %s", apiErr.Code, apiErr.Message)
+                return nil, fmt.Errorf("payment provider error: %s", apiErr.Message)
+            }
+        }
         return nil, err
     }
 
-    // 3. Validate Slip Freshness (using the ISO timestamp from your documentation)
     now := time.Now().UTC()
-    // Using TransTimestamp from the OkSlip response we defined earlier
     timeDiff := now.Sub(billSlip.Data.TransTimestamp)
     if timeDiff > 30*time.Minute {
         return nil, exception.ErrSlipExpired
     }
 
-    // 4. Extract Receiver Details for Verification
-    // Based on documentation: receiver.account.type (BANKAC, TOKEN)
     acc := billSlip.Data.Receiver.Account
     proxy := billSlip.Data.Receiver.Proxy
     
-    amountPaid := billSlip.Data.Amount // Data.Amount is float64 in our struct
+    amountPaid := billSlip.Data.Amount 
     var method models.PaymentMethod
     var slipAccount string
 
     if acc.Type == "BANKAC" {
         method = models.BankAccount
         slipAccount = acc.Value
-    } else if proxy.Type != "" { // If there's a proxy (MSISDN, NATID, etc)
+    } else if proxy.Type != "" { 
         method = models.PromptPay
         slipAccount = proxy.Value
     } else {
-        // Fallback or default
         method = models.BankAccount
         slipAccount = acc.Value
     }
 
-    // ... your method detection logic ...
-
-    // 1. Extract only the digits from the slip value (e.g., "xxx-x-x3464-x" -> "3464")
     slipDigits := helper.ExtractNumericCharacters(slipAccount)
-
-    // 2. Extract only the digits from your DB record (e.g., "1234567890" -> "1234567890")
+    
     dbDigits := helper.ExtractNumericCharacters(g.Payment.Account)
 
-    // 3. Compare based on what's available
-    match := false
-    if method == models.PromptPay {
-        // PromptPay (Phone/ID) is usually not masked, compare fully
-        match = dbDigits == slipDigits
-    } else {
-        // For BANKAC, OkSlip gives us a partial fragment.
-        // We check if the digits we got from the slip exist at the END of our DB account.
-        // Usually, 4 digits is the standard fragment provided.
-        match = strings.HasSuffix(dbDigits, slipDigits) || 
-                (len(dbDigits) >= 5 && strings.Contains(dbDigits, slipDigits))
+    if len(slipDigits) == 0 {
+        return nil, errors.New("could not extract digits from slip")
     }
+
+    match := strings.Contains(dbDigits, slipDigits)
 
     if g.Payment.Method != method || !match {
         return nil, exception.ErrWrongReciever
     }
 
-    // 5. Update Bill Status
+	existingSlip, err := s.slipRepo.GetByTransRef(ctx, billSlip.Data.TransRef)
+    if err != nil {
+        return nil, err
+    }
+    if existingSlip != nil {
+        return nil, exception.ErrDupeSlip
+    }
+
+    isUnderpaid := amountPaid < float64(b.AmountDue)
+
     b.UpdatedAt = now
     b.SubmittedAt = &now
+	b.VerifiedAt = &now
     b.Status = models.BillStatusVerified
-
+    
     billSlipJson, err := json.Marshal(billSlip)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize slip data: %w", err)
 	}
+
     b.ProofJSON = string(billSlipJson)
 
-    // 6. Handle Underpayment
-    if amountPaid < float64(b.AmountDue) {
-        remainingAmount := b.AmountDue - int(amountPaid)
-        remainingBill := models.Bill{
-            GroupID:     g.ID,
-            GuildID:     g.DiscordGuildID,
-            MemberID:    userId,
-            Year:        now.Year(),
-            Month:       int(now.Month()),
-            AmountDue:   remainingAmount,
-            Currency:    "THB",
-            Status:      models.BillStatusPending,
-            Description: "Remaining balance (Underpaid)",
-            CreatedAt:   now,
-            UpdatedAt:   now,
-        }
-        if err := s.repo.Create(ctx, &remainingBill); err != nil {
-    		return nil, fmt.Errorf("failed to create underpayment bill: %w", err)
-		}
-    }
-
-    // 7. Reduce Member Debt
     memberFound := false
     for i := range g.Members {
         m := &g.Members[i]
         if m.MemberID == userId {
-            debtReduction := b.AmountDue
-            if debtReduction > m.Dept {
-                debtReduction = m.Dept
+            actualReduction := int(amountPaid)
+            if actualReduction > m.Dept {
+                actualReduction = m.Dept
             }
-            m.Dept -= debtReduction
+            m.Dept -= actualReduction
             
             if m.Dept <= 0 {
                 m.Dept = 0
                 m.Payment = models.PaymentStatusPaid
             }
-
             if m.Status == models.MemberStatusInvited {
                 m.Status = models.MemberStatusActive
             }
@@ -262,11 +259,36 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
         return nil, exception.ErrMemberNotFound
     }
 
-    // 8. Atomic-like updates (ideally these should be in a transaction)
+    if isUnderpaid {
+        remainingAmount := b.AmountDue - int(amountPaid)
+        remainingBill := models.Bill{
+            GroupID:     g.ID,
+            GuildID:     g.DiscordGuildID,
+            MemberID:    userId,
+            Year:        b.Year,
+            Month:       b.Month,
+            AmountDue:   remainingAmount,
+            Currency:    "THB",
+            Status:      models.BillStatusPending,
+            Description: fmt.Sprintf("Balance remaining from Bill #%d", b.ID),
+        }
+        if err := s.repo.Create(ctx, &remainingBill); err != nil {
+            return nil, err
+        }
+    }
+
     if err := s.repo.Update(ctx, billId, b); err != nil {
         return nil, err
     }
     if err := s.groupRepo.Update(ctx, g.ID, g); err != nil {
+        return nil, err
+    }
+    
+    slip := models.Slip{
+        TransRef:    billSlip.Data.TransRef,
+        SubmittedAt: &now,
+    }
+    if err := s.slipRepo.Create(ctx, &slip); err != nil {
         return nil, err
     }
 
