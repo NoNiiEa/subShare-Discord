@@ -219,7 +219,6 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
         return nil, exception.ErrDupeSlip
     }
 
-    amountPaid = billSlip.Data.Amount 
     isUnderpaid := amountPaid < float64(b.AmountDue)
 
     b.UpdatedAt = now
