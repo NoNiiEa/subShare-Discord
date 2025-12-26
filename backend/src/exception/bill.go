@@ -19,4 +19,12 @@ var (
 	ErrWrongReciever   = errors.New("worng reciever.")
 	ErrBillAlreadyPaid = errors.New("bill is already paid")
 	ErrSlipExpired     = errors.New("payment slip is too old. Please upload the slip within 30 minutes of making the transfer.")
+	ErrDupeSlip		   = errors.New("duplicate payment slip")
+)
+
+var (
+	ErrNoQRCode = errors.New("No valid QR code could be found in the uploaded image")
+	ErrSlipExpiredOrInvalid = errors.New("This QR code has expired or the transaction cannot be found.")
+	ErrSlipImageInvalid = errors.New("The uploaded file is not a valid image format.")
+	ErrTimeOut = errors.New("the verification service is taking too long. Please try again later")
 )
