@@ -228,7 +228,7 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
     
     billSlipJson, err := json.Marshal(billSlip)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to serialize slip data: %w", err)
 	}
 
     b.ProofJSON = string(billSlipJson)
