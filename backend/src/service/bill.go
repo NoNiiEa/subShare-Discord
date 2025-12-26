@@ -224,6 +224,7 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
 
     b.UpdatedAt = now
     b.SubmittedAt = &now
+	b.VerifiedAt = &now
     b.Status = models.BillStatusVerified
     
     billSlipJson, err := json.Marshal(billSlip)
