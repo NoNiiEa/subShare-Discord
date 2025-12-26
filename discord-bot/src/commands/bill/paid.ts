@@ -181,10 +181,12 @@ export async function executePaid(interaction: ChatInputCommandInteraction) {
         let remainingBill = null;
         try {
             const unpaidBills = await backend.bill.GetUnpaidByUserAndGuild(interaction.user.id, guildId);
-            if (unpaidBills) {
+            if (unpaidBills && unpaidBills.length > 0) {
                 remainingBill = unpaidBills.find((bill: any) => 
-                    bill.description?.toLowerCase().includes("underpaid") || 
-                    bill.description?.toLowerCase().includes("remaining balance")
+                    bill.group_id === paidBill.group_id && 
+                    bill.month === paidBill.month && 
+                    bill.year === paidBill.year &&
+                    bill.id !== paidBill.id
                 );
             }
         } catch (err) {
@@ -238,20 +240,34 @@ export async function executePaid(interaction: ChatInputCommandInteraction) {
         console.error("Payment Submission Error:", err);
 
         let errorMessage = "Unknown error";
-        if (err?.response?.data?.error) {
-            errorMessage = err.response.data.error;
-        } else if (err?.response?.data?.message) {
-            errorMessage = err.response.data.message;
-        } else if (err?.message) {
-            errorMessage = err.message;
-        }
+        const errorBody = err?.response?.data?.error || err?.response?.data?.message || err?.message || "";
 
-        if (err?.response?.status === 400) {
-            errorMessage = `Bad Request: ${errorMessage}`;
-        } else if (err?.response?.status === 404) {
-            errorMessage = `Not Found: ${errorMessage}`;
-        } else if (err?.response?.status === 403) {
-            errorMessage = `Forbidden: ${errorMessage}`;
+        if (errorBody.includes("bill not found") || err?.response?.status === 404) {
+            errorMessage = "❌ Bill not found. Please select a valid bill.";
+        } else if (errorBody.includes("bill does not belong to this user") || err?.response?.status === 403) {
+            errorMessage = "❌ This bill does not belong to you. You cannot pay someone else's bill.";
+        } else if (errorBody.includes("payment receiver does not match")) {
+            errorMessage = "❌ Payment receiver does not match group settings. Please check the payment details.";
+        } else if (errorBody.includes("proof url is required")) {
+            errorMessage = "❌ Proof URL is required. Please upload a valid slip image.";
+        } else if (errorBody.includes("member not found in group")) {
+            errorMessage = "❌ You are not a member of this group.";
+        } else if (errorBody.includes("bill is already paid")) {
+            errorMessage = "❌ This bill has already been paid.";
+        } else if (errorBody.includes("payment slip is too old") || errorBody.includes("within 30 minutes")) {
+            errorMessage = "❌ Payment slip is too old. Please upload the slip within 30 minutes of making the transfer.";
+        } else if (errorBody.includes("No valid QR code")) {
+            errorMessage = "❌ No valid QR code found in the image. Please ensure the payment slip contains a clear QR code.";
+        } else if (errorBody.includes("slip QR code has expired") || errorBody.includes("expired or is invalid")) {
+            errorMessage = "❌ The slip QR code has expired or is invalid. Please use a recent slip.";
+        } else if (errorBody.includes("slip has already been used") || err?.response?.status === 409) {
+            errorMessage = "❌ This slip has already been used. Please use a different payment slip.";
+        } else if (errorBody.includes("amount in the slip does not match")) {
+            errorMessage = "❌ The amount in the slip does not match the bill amount. Please verify the payment details.";
+        } else if (errorBody.includes("Verification timed out") || err?.response?.status === 504) {
+            errorMessage = "❌ Verification timed out. Please try again later.";
+        } else {
+            errorMessage = `❌ Failed to verify payment: ${errorBody || "Unknown error"}`;
         }
         
         try {
@@ -261,7 +277,7 @@ export async function executePaid(interaction: ChatInputCommandInteraction) {
         }
         
         await interaction.followUp({
-            content: `❌ **Failed to submit payment.**\n> ${errorMessage}`,
+            content: `**Failed to submit payment.**\n> ${errorMessage}`,
             flags: MessageFlags.Ephemeral
         });
     }
