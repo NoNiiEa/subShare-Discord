@@ -78,10 +78,20 @@ func (h *BillHandler) Pay(w http.ResponseWriter, r *http.Request) {
 			helper.WriteError(w, http.StatusBadRequest, "payment slip is too old. Please upload the slip within 30 minutes of making the transfer.")
 		case errors.Is(err, exception.ErrDupeSlip):
 			helper.WriteError(w, http.StatusBadRequest, "This slip has already been used for another bill.")
-		default:
-			helper.WriteError(w, http.StatusInternalServerError, err.Error())
-		}
-		return
+		case errors.Is(err, exception.ErrNoQRCode): // Code 1007
+            helper.WriteError(w, http.StatusBadRequest, "No valid QR code found in the image.")
+        case errors.Is(err, exception.ErrSlipExpiredOrInvalid): // Code 1011
+            helper.WriteError(w, http.StatusBadRequest, "The slip QR code has expired or is invalid.")
+        case errors.Is(err, exception.ErrDupeSlip): // Code 1012
+            helper.WriteError(w, http.StatusConflict, "This slip has already been used.")
+        case errors.Is(err, exception.ErrInvalidAmount): // Code 1013
+            helper.WriteError(w, http.StatusBadRequest, "The amount in the slip does not match the record.")
+		case errors.Is(err, exception.ErrTimeOut):
+			helper.WriteError(w, http.StatusGatewayTimeout, "Verification timed out. Please try again.")
+        default:
+            helper.WriteError(w, http.StatusInternalServerError, err.Error())
+        }
+        return
 	}
 
 	helper.WriteJSON(w, http.StatusOK, b)

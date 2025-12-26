@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -150,6 +151,25 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
 
     billSlip, err := s.okSlipClient.CheckSlip(ctx, proofUrl)
     if err != nil {
+		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline") {
+        	return nil, exception.ErrTimeOut
+    	}
+
+        var apiErr *okslip.APIErrorResponse
+        if errors.As(err, &apiErr) {
+            switch apiErr.Code {
+            case 1007: // No QR Code
+                return nil, exception.ErrNoQRCode
+            case 1011: // QR Code Expired or Invalid
+                return nil, exception.ErrSlipExpiredOrInvalid
+            case 1012: // Duplicate Slip detected by Provider
+                return nil, exception.ErrDupeSlip
+            default:
+                // Log the unhandled code and return a generic payment error
+                log.Printf("Unhandled OkSlip Code: %d - %s", apiErr.Code, apiErr.Message)
+                return nil, fmt.Errorf("payment provider error: %s", apiErr.Message)
+            }
+        }
         return nil, err
     }
 
@@ -210,7 +230,7 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
 	if err != nil {
 		return nil, err
 	}
-	
+
     b.ProofJSON = string(billSlipJson)
 
     memberFound := false
