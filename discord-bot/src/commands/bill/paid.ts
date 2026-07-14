@@ -97,7 +97,7 @@ export async function autocompletePaid(interaction: AutocompleteInteraction) {
             .filter(({ bill, group }) =>
                 group.name.toLowerCase().includes(searchTerm) ||
                 String(bill.id).includes(searchTerm) ||
-                bill.description?.toLowerCase().includes(searchTerm)
+                bill.description?.toLowerCase()?.includes(searchTerm)
             )
             .slice(0, 25)
             .map(({ bill, group }) => billToChoice(bill, group));
