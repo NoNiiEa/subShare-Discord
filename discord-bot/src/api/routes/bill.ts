@@ -1,5 +1,5 @@
 import { BaseAPI } from "../base.js";
-import { BillResponse, PayRequest } from "../types.js";
+import { BillResponse, PayRequest, PayMultipleRequest, PayMultipleResponse } from "../types.js";
 
 export class Bill extends BaseAPI {
     async GetUnpaidByGuild(guildId: string): Promise<BillResponse[]> {
@@ -12,5 +12,9 @@ export class Bill extends BaseAPI {
 
     async Pay(payload: PayRequest): Promise<BillResponse> {
         return await this.request<BillResponse>(`/bill/pay`, "POST", payload)
+    }
+
+    async PayMultiple(payload: PayMultipleRequest): Promise<PayMultipleResponse> {
+        return await this.request<PayMultipleResponse>(`/bill/pay-multiple`, "POST", payload)
     }
 }

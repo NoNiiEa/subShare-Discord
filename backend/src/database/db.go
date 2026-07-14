@@ -29,7 +29,7 @@ db, err := sql.Open("sqlite3", dbPath+"?cache=shared&mode=rwc&_busy_timeout=5000
 		return nil, err
 	}
 
-	if err := createTable(db); err != nil {
+	if err := CreateTable(db); err != nil {
 		return nil, err
 	}
 
@@ -37,7 +37,9 @@ db, err := sql.Open("sqlite3", dbPath+"?cache=shared&mode=rwc&_busy_timeout=5000
 	return db, nil
 }
 
-func createTable(db *sql.DB) error {
+// CreateTable applies the schema to db. Exported so tests can build the real
+// schema against an in-memory database.
+func CreateTable(db *sql.DB) error {
 	const createGroupsTable = `
 	CREATE TABLE IF NOT EXISTS groups (
 		id                INTEGER PRIMARY KEY,

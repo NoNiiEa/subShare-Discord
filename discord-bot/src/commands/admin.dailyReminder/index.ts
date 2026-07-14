@@ -5,7 +5,7 @@ import { config } from "../../config.js";
 export default {
     data: new SlashCommandBuilder()
         .setName("force-check-bills")
-        .setDescription("ADMIN ONLY: Manually triggers the daily bill check.")
+        .setDescription("ADMIN ONLY: Manually triggers the weekly unpaid-bill reminder.")
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     async execute(interaction: ChatInputCommandInteraction) {
@@ -30,7 +30,7 @@ export default {
 
             const count = await checkUnpaidBills(interaction.client);
 
-            await interaction.editReply(`✅ Manual check complete. Sent **${count}** reminders.`);
+            await interaction.editReply(`✅ Manual check complete. Tagged **${count}** member(s) with unpaid bills.`);
         } catch (error) {
             console.error("Force-check-bills Error:", error);
             await interaction.editReply("❌ An error occurred while running the check.");

@@ -35,7 +35,7 @@ func (r *slipRepo) Create(ctx context.Context, s *models.Slip) error {
 	) VALUES (?, ?);
 	`
 
-	_, err := r.db.ExecContext(ctx, q, s.TransRef, s.SubmittedAt)
+	_, err := r.db.ExecContext(ctx, q, s.TransRef, nullableTime(s.SubmittedAt))
 	if err != nil {
 		return err
 	}
@@ -50,11 +50,15 @@ func (r *slipRepo) GetByTransRef(ctx context.Context, transRef string) (*models.
 	`
 
 	var slip models.Slip
+	// submitted_at is a TEXT column, so it comes back as a string and has to be
+	// parsed rather than scanned straight into a *time.Time.
+	var submittedAt *string
+
 	row := r.db.QueryRowContext(ctx, q, transRef)
 	err := row.Scan(
 		&slip.ID,
 		&slip.TransRef,
-		&slip.SubmittedAt,
+		&submittedAt,
 	)
 
 	if err != nil {
@@ -64,6 +68,8 @@ func (r *slipRepo) GetByTransRef(ctx context.Context, transRef string) (*models.
 
 		return nil, err
 	}
+
+	slip.SubmittedAt = parseNullableTime(submittedAt)
 
 	return &slip, nil
 }

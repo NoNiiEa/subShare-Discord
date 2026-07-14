@@ -23,6 +23,14 @@ var (
 	ErrSlipAmountMismatch = errors.New("slip amount does not match the bill")
 )
 
+// Batch payment (paying several bills with a single slip).
+var (
+	ErrNoBillsSelected  = errors.New("no bills selected")
+	ErrTooManyBills     = errors.New("too many bills selected")
+	ErrMixedPayee       = errors.New("selected bills must be paid to the same account")
+	ErrSlipInsufficient = errors.New("slip amount is less than the total due")
+)
+
 var (
 	ErrNoQRCode             = errors.New("No valid QR code could be found in the uploaded image")
 	ErrSlipExpiredOrInvalid = errors.New("This QR code has expired or the transaction cannot be found.")

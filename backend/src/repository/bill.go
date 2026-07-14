@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/NoNiiEa/subShare-Discord/src/exception"
@@ -13,6 +14,7 @@ type BillRepository interface {
 	Update(ctx context.Context, billId int, b *models.Bill) error
 	GetByGuildId(ctx context.Context, guildId string) ([]models.Bill, error)
 	GetById(ctx context.Context, billId int) (*models.Bill, error)
+	GetByIds(ctx context.Context, ids []int) ([]models.Bill, error)
 	DeleteById(ctx context.Context, billId int) error
 	GetByGroupID(ctx context.Context, groupId int) ([]models.Bill, error)
 	// WithTx returns a repository bound to the given transaction.
@@ -71,11 +73,11 @@ func scanBill(s rowScanner) (*models.Bill, error) {
 	return &b, nil
 }
 
-// queryBills runs a bill SELECT with a single-argument WHERE clause.
-func (r *billRepo) queryBills(ctx context.Context, whereClause string, arg any) ([]models.Bill, error) {
+// queryBills runs a bill SELECT with the given WHERE clause and arguments.
+func (r *billRepo) queryBills(ctx context.Context, whereClause string, args ...any) ([]models.Bill, error) {
 	q := `SELECT ` + billColumns + ` FROM bills WHERE ` + whereClause
 
-	rows, err := r.db.QueryContext(ctx, q, arg)
+	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -178,6 +180,22 @@ func (r *billRepo) GetByGuildId(ctx context.Context, guildId string) ([]models.B
 
 func (r *billRepo) GetByGroupID(ctx context.Context, groupId int) ([]models.Bill, error) {
 	return r.queryBills(ctx, "group_id = ?", groupId)
+}
+
+// GetByIds returns the bills matching ids. Missing ids are simply absent from
+// the result, so callers that require every id to exist must check the length.
+func (r *billRepo) GetByIds(ctx context.Context, ids []int) ([]models.Bill, error) {
+	if len(ids) == 0 {
+		return []models.Bill{}, nil
+	}
+
+	placeholders := strings.Repeat("?,", len(ids)-1) + "?"
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+
+	return r.queryBills(ctx, "id IN ("+placeholders+")", args...)
 }
 
 func (r *billRepo) GetById(ctx context.Context, billId int) (*models.Bill, error) {

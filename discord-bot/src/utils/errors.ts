@@ -47,8 +47,16 @@ export function toUserMessage(
   return fallback;
 }
 
-/** Friendly mappings for /bill paid backend errors. */
+/** Friendly mappings for /bill paid and /bill payall backend errors. */
 export const PAYMENT_ERROR_RULES: ErrorRule[] = [
+  // Batch-payment rules must come first and match on text only: the rules below
+  // match on `status` too, so a status-carrying rule placed earlier would
+  // swallow these.
+  { match: ["same account"], message: "❌ These bills go to different accounts. You can only combine bills paid to the same person and account." },
+  { match: ["less than the total"], message: "❌ Your slip is less than the total of the selected bills. Please transfer the full amount." },
+  { match: ["no bills selected"], message: "❌ Please select at least one bill." },
+  { match: ["at most 25 bills"], message: "❌ You can pay at most 25 bills at once." },
+
   { match: ["bill not found"], status: 404, message: "❌ Bill not found. Please select a valid bill." },
   { match: ["bill does not belong to this user"], status: 403, message: "❌ This bill does not belong to you. You cannot pay someone else's bill." },
   { match: ["payment receiver does not match"], message: "❌ Payment receiver does not match group settings. Please check the payment details." },
