@@ -200,7 +200,9 @@ func findInvitedMember(g *models.Group, userId string) (int, error) {
 			if m.Status == models.MemberStatusActive {
 				return -1, exception.ErrAlreadyMember
 			}
-			return i, nil
+			if m.Status == models.MemberStatusInvited {
+				return i, nil
+			}
 		}
 	}
 	return -1, exception.ErrNotInvited
