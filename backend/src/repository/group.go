@@ -7,8 +7,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/NoNiiEa/subShare-Discord/src/models"
 	"github.com/NoNiiEa/subShare-Discord/src/exception"
+	"github.com/NoNiiEa/subShare-Discord/src/models"
 )
 
 type GroupRepository interface {
@@ -18,119 +18,49 @@ type GroupRepository interface {
 	GetByGuildId(ctx context.Context, guildId string) ([]models.Group, error)
 	GetByDueDay(ctx context.Context, dueDay int) ([]models.Group, error)
 	DeleteById(ctx context.Context, groupId int) error
+	// WithTx returns a repository bound to the given transaction.
+	WithTx(tx DBTX) GroupRepository
 }
 
 type groupRepo struct {
-	db *sql.DB
+	db DBTX
 }
 
-func NewGroupRepository(db *sql.DB) GroupRepository {
+func NewGroupRepository(db DBTX) GroupRepository {
 	return &groupRepo{db: db}
 }
 
-func (r *groupRepo) Create(ctx context.Context, g *models.Group) (*models.Group, error) {
-    membersJSON, err := json.Marshal(g.Members)
-    if err != nil {
-        return nil, err
-    }
-
-    paymentJSON, err := json.Marshal(g.Payment)
-    if err != nil {
-        return nil, err
-    }
-
-    const q = `
-    INSERT INTO groups (
-        name,
-        amount,
-        amount_per_member,
-        due_day,
-        members_json,
-        discord_guild_id,
-        owner_discord_id,
-        payment,
-        created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);` 
-
-    res, err := r.db.ExecContext(ctx, q,
-        g.Name,
-        g.Amount,
-        g.AmountPerMember,
-        g.DueDay,
-        string(membersJSON),
-        g.DiscordGuildID,
-        g.OwnerDiscordID,
-        string(paymentJSON),
-        g.CreatedAt.Format(time.RFC3339),
-    )
-    if err != nil {
-        return nil, err
-    }
-
-    id, err := res.LastInsertId()
-    if err != nil {
-        return nil, err
-    }
-
-    g.ID = int(id)
-    return g, nil
+func (r *groupRepo) WithTx(tx DBTX) GroupRepository {
+	return &groupRepo{db: tx}
 }
 
-func (r *groupRepo) Update(ctx context.Context, groupId int, g *models.Group) error {
+const groupColumns = `id, name, amount, amount_per_member, due_day,
+	members_json, discord_guild_id, owner_discord_id, payment, created_at`
+
+// marshalGroupJSON serializes the JSON TEXT columns (members + payment).
+func marshalGroupJSON(g *models.Group) (members string, payment string, err error) {
 	membersJSON, err := json.Marshal(g.Members)
-    if err != nil {
-        return err
-    }
-
-    paymentJSON, err := json.Marshal(g.Payment)
-    if err != nil {
-        return err
-    }
-
-	const q = `
-	UPDATE groups
-	SET 
-		name = ?,
-		amount = ?,
-		amount_per_member = ?,
-		due_day = ?,
-		members_json = ?,
-		discord_guild_id = ?,
-		owner_discord_id = ?,
-		payment = ?
-	WHERE id = ?
-	`
-
-	_, err = r.db.ExecContext(ctx, q, g.Name, g.Amount, g.AmountPerMember, g.DueDay, string(membersJSON), g.DiscordGuildID, g.OwnerDiscordID, string(paymentJSON), groupId)
-	return err
+	if err != nil {
+		return "", "", err
+	}
+	paymentJSON, err := json.Marshal(g.Payment)
+	if err != nil {
+		return "", "", err
+	}
+	return string(membersJSON), string(paymentJSON), nil
 }
 
-func (r *groupRepo) GetById(ctx context.Context, groupId int) (*models.Group, error) {
-	const q = `
-	SELECT
-		id,
-		name,
-		amount,
-		amount_per_member,
-		due_day,
-		members_json,
-		discord_guild_id,
-		owner_discord_id,
-		payment,
-		created_at
-		FROM groups
-	WHERE id = ?
-	`
-
-	row := r.db.QueryRowContext(ctx, q, groupId)
+// scanGroup reads one group row (10 columns in groupColumns order), decoding the
+// embedded members/payment JSON.
+func scanGroup(s rowScanner) (*models.Group, error) {
 	var (
-		g models.Group
+		g           models.Group
 		membersJSON string
 		paymentJSON string
-		createdAtStr string
+		createdAt   string
 	)
 
-	if err := row.Scan(
+	if err := s.Scan(
 		&g.ID,
 		&g.Name,
 		&g.Amount,
@@ -140,180 +70,134 @@ func (r *groupRepo) GetById(ctx context.Context, groupId int) (*models.Group, er
 		&g.DiscordGuildID,
 		&g.OwnerDiscordID,
 		&paymentJSON,
-		&createdAtStr,
+		&createdAt,
 	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, exception.ErrNotFound
-		}
 		return nil, err
 	}
 
 	if err := json.Unmarshal([]byte(membersJSON), &g.Members); err != nil {
 		return nil, err
 	}
-
 	if err := json.Unmarshal([]byte(paymentJSON), &g.Payment); err != nil {
 		return nil, err
 	}
-
-	t, err := time.Parse(time.RFC3339, createdAtStr)
-	if err != nil {
-		return nil, err
-	}
-	g.CreatedAt = t
+	g.CreatedAt = parseTime(createdAt)
 
 	return &g, nil
 }
 
-func (r *groupRepo) GetByGuildId(ctx context.Context, guildId string) ([]models.Group, error) {
-	const q = `
-	SELECT
-		id,
-		name,
-		amount,
-		amount_per_member,
-		due_day,
-		members_json,
-		discord_guild_id,
-		owner_discord_id,
-		payment,
-		created_at
-		FROM groups
-	WHERE discord_guild_id = ?
-	`
+// queryGroups runs a group SELECT with a single-argument WHERE clause.
+func (r *groupRepo) queryGroups(ctx context.Context, whereClause string, arg any) ([]models.Group, error) {
+	q := `SELECT ` + groupColumns + ` FROM groups WHERE ` + whereClause
 
-	rows, err := r.db.QueryContext(ctx, q, guildId)
+	rows, err := r.db.QueryContext(ctx, q, arg)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	var result []models.Group
-
 	for rows.Next() {
-		var (
-			g models.Group
-			membersJSON string
-			paymentJSON string
-			createAtStr string
-		)
-
-		if err := rows.Scan(
-			&g.ID,
-			&g.Name,
-			&g.Amount,
-			&g.AmountPerMember,
-			&g.DueDay,
-			&membersJSON,
-			&g.DiscordGuildID,
-			&g.OwnerDiscordID,
-			&paymentJSON,
-			&createAtStr,
-		); err != nil {
-			return nil, err
-		}
-
-		if err := json.Unmarshal([]byte(membersJSON), &g.Members); err != nil {
-			return nil, err
-		}
-
-		if err := json.Unmarshal([]byte(paymentJSON), &g.Payment); err != nil {
-			return nil, err
-		}
-
-		t, err := time.Parse(time.RFC3339, createAtStr)
+		g, err := scanGroup(rows)
 		if err != nil {
 			return nil, err
 		}
-		g.CreatedAt = t
-
-		result = append(result, g)
+		result = append(result, *g)
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
 	return result, nil
+}
+
+func (r *groupRepo) Create(ctx context.Context, g *models.Group) (*models.Group, error) {
+	membersJSON, paymentJSON, err := marshalGroupJSON(g)
+	if err != nil {
+		return nil, err
+	}
+
+	const q = `
+	INSERT INTO groups (
+		name, amount, amount_per_member, due_day, members_json,
+		discord_guild_id, owner_discord_id, payment, created_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`
+
+	res, err := r.db.ExecContext(ctx, q,
+		g.Name,
+		g.Amount,
+		g.AmountPerMember,
+		g.DueDay,
+		membersJSON,
+		g.DiscordGuildID,
+		g.OwnerDiscordID,
+		paymentJSON,
+		g.CreatedAt.Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	g.ID = int(id)
+	return g, nil
+}
+
+func (r *groupRepo) Update(ctx context.Context, groupId int, g *models.Group) error {
+	membersJSON, paymentJSON, err := marshalGroupJSON(g)
+	if err != nil {
+		return err
+	}
+
+	const q = `
+	UPDATE groups SET
+		name = ?, amount = ?, amount_per_member = ?, due_day = ?,
+		members_json = ?, discord_guild_id = ?, owner_discord_id = ?, payment = ?
+	WHERE id = ?
+	`
+
+	_, err = r.db.ExecContext(ctx, q,
+		g.Name,
+		g.Amount,
+		g.AmountPerMember,
+		g.DueDay,
+		membersJSON,
+		g.DiscordGuildID,
+		g.OwnerDiscordID,
+		paymentJSON,
+		groupId,
+	)
+	return err
+}
+
+func (r *groupRepo) GetById(ctx context.Context, groupId int) (*models.Group, error) {
+	q := `SELECT ` + groupColumns + ` FROM groups WHERE id = ?`
+	row := r.db.QueryRowContext(ctx, q, groupId)
+
+	g, err := scanGroup(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, exception.ErrNotFound
+		}
+		return nil, err
+	}
+	return g, nil
+}
+
+func (r *groupRepo) GetByGuildId(ctx context.Context, guildId string) ([]models.Group, error) {
+	return r.queryGroups(ctx, "discord_guild_id = ?", guildId)
 }
 
 func (r *groupRepo) GetByDueDay(ctx context.Context, dueDay int) ([]models.Group, error) {
-	const q = `
-	SELECT
-		id,
-		name,
-		amount,
-		amount_per_member,
-		due_day,
-		members_json,
-		discord_guild_id,
-		owner_discord_id,
-		payment,
-		created_at
-		FROM groups
-	WHERE due_day = ?
-	`
-
-	rows, err := r.db.QueryContext(ctx, q, dueDay)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var result []models.Group
-
-	for rows.Next() {
-		var (
-			g models.Group
-			membersJSON string
-			paymentJSON string
-			createAtStr string
-		)
-
-		if err := rows.Scan(
-			&g.ID,
-			&g.Name,
-			&g.Amount,
-			&g.AmountPerMember,
-			&g.DueDay,
-			&membersJSON,
-			&g.DiscordGuildID,
-			&g.OwnerDiscordID,
-			&paymentJSON,
-			&createAtStr,
-		); err != nil {
-			return nil, err
-		}
-
-		if err := json.Unmarshal([]byte(membersJSON), &g.Members); err != nil {
-			return nil, err
-		}
-
-		if err := json.Unmarshal([]byte(paymentJSON), &g.Payment); err != nil {
-			return nil, err
-		}
-
-		t, err := time.Parse(time.RFC3339, createAtStr)
-		if err != nil {
-			return nil, err
-		}
-		g.CreatedAt = t
-
-		result = append(result, g)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	return r.queryGroups(ctx, "due_day = ?", dueDay)
 }
 
 func (r *groupRepo) DeleteById(ctx context.Context, groupId int) error {
-	const q = `
-	DELETE FROM groups
-	WHERE id = ?
-	`
+	const q = `DELETE FROM groups WHERE id = ?`
 
 	res, err := r.db.ExecContext(ctx, q, groupId)
 	if err != nil {

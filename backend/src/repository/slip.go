@@ -8,19 +8,23 @@ import (
 	"github.com/NoNiiEa/subShare-Discord/src/models"
 )
 
-
-
 type SlipRepository interface {
 	Create(ctx context.Context, s *models.Slip) error
 	GetByTransRef(ctx context.Context, transRef string) (*models.Slip, error)
+	// WithTx returns a repository bound to the given transaction.
+	WithTx(tx DBTX) SlipRepository
 }
 
 type slipRepo struct {
-	db *sql.DB
+	db DBTX
 }
 
-func NewSlipRepository(db *sql.DB) SlipRepository {
+func NewSlipRepository(db DBTX) SlipRepository {
 	return &slipRepo{db: db}
+}
+
+func (r *slipRepo) WithTx(tx DBTX) SlipRepository {
+	return &slipRepo{db: tx}
 }
 
 func (r *slipRepo) Create(ctx context.Context, s *models.Slip) error {

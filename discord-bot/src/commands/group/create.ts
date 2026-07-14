@@ -1,28 +1,19 @@
-import { ChatInputCommandInteraction, MessageFlags, EmbedBuilder, } from "discord.js";
-import { BackendClient } from "../../api/index.js";
-import { config } from "../../config.js";
+import { ChatInputCommandInteraction, MessageFlags, EmbedBuilder } from "discord.js";
+import { backend } from "../../utils/backend.js";
+import { requireGuild } from "../../utils/interaction.js";
+import { toUserMessage } from "../../utils/errors.js";
+import { formatPaymentMethod } from "../../utils/format.js";
 
 export async function executeCreate(interaction: ChatInputCommandInteraction) {
+    const guildId = await requireGuild(interaction);
+    if (!guildId) return;
+
     const name = interaction.options.getString("name", true);
     const amount = interaction.options.getInteger("amount", true);
     const dueDay = interaction.options.getInteger("due_day", true);
     const paymentMethod = interaction.options.getString("payment_method", true);
     const account = interaction.options.getString("account", true);
     const ownerId = interaction.user.id;
-    const guildId = interaction.guildId
-
-    if (!guildId) {
-        await interaction.reply({
-            content: "This command can only be used inside a server (not in DMs).",
-            flags: MessageFlags.Ephemeral,
-        });
-        return;
-    }
-
-    const backend = new BackendClient({
-        baseUrl: config.BACKEND_BASE_URL || "http://localhost:8000",
-        apiKey: config.BACKEND_API_KEY
-    });
 
     await interaction.deferReply({
         flags: MessageFlags.Ephemeral,
@@ -44,13 +35,6 @@ export async function executeCreate(interaction: ChatInputCommandInteraction) {
         const createdAt = new Date(group.create_at).toLocaleString("th-TH", {
             timeZone: "Asia/Bangkok",
         });
-
-        // Format payment method: show PromptPay instead of MSISDN
-        const methodLower = (group.payment.method || '').toLowerCase();
-        let displayMethod = group.payment.method || 'N/A';
-        if (methodLower === 'msisdn') displayMethod = 'PromptPay';
-        else if (methodLower === 'promptpay') displayMethod = 'PromptPay';
-        else if (methodLower === 'bank_account' || methodLower === 'bank' || methodLower === 'bankac') displayMethod = 'Bank';
 
         const embed = new EmbedBuilder()
             .setTitle("✅ Group Created Successfully!")
@@ -74,7 +58,7 @@ export async function executeCreate(interaction: ChatInputCommandInteraction) {
                 },
                 {
                 name: "Payment",
-                value: `**${displayMethod}** → \`${group.payment.account}\``,
+                value: `**${formatPaymentMethod(group.payment.method)}** → \`${group.payment.account}\``,
                 inline: false,
                 },
                 {
@@ -94,13 +78,9 @@ export async function executeCreate(interaction: ChatInputCommandInteraction) {
 
         await interaction.editReply({ embeds: [embed] });
     } catch (err: any) {
-        const detail =
-            err?.response?.data?.error ||
-            err?.response?.data?.message ||
-            JSON.stringify(err?.response?.data ?? {}, null, 2);
-
-        await interaction.editReply(
-            `Failed to create group.\n\`\`\`json\n${detail}\n\`\`\``
-        );
+        console.error("Create Group Error:", err);
+        await interaction.editReply({
+            content: `❌ **Failed to create group**\n> ${toUserMessage(err)}`,
+        });
     }
 }

@@ -1,28 +1,24 @@
 import {
     SlashCommandBuilder,
     ChatInputCommandInteraction,
-    EmbedBuilder,
     MessageFlags
 } from "discord.js";
-import { BackendClient } from "../../api/index.js";
-import { config } from "../../config.js";
+import { backend } from "../../utils/backend.js";
 
 export default {
     data: new SlashCommandBuilder()
         .setName("health")
         .setDescription("Provides information about the health of the server"),
-        
+
     async execute(interaction: ChatInputCommandInteraction) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        const backend = new BackendClient({
-            baseUrl: config.BACKEND_BASE_URL || "http://localhost:8000",
-            apiKey: config.BACKEND_API_KEY
-        });
-
-        const res = await backend.health.ping();
-
-        await interaction.reply(
-            res.status
-        );
+        try {
+            const res = await backend.health.ping();
+            await interaction.editReply(`✅ Backend status: ${res.status}`);
+        } catch (err) {
+            console.error("Health Check Error:", err);
+            await interaction.editReply("❌ Backend is unreachable. Please try again later.");
+        }
     },
 };

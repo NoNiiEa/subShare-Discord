@@ -20,5 +20,8 @@ await registerCommands()
 
 await setupCommandHandler(client)
 
-client.login(config.DISCORD_TOKEN);
+client.login(config.DISCORD_TOKEN).catch((err) => {
+    console.error("Failed to log in to Discord:", err);
+    process.exit(1);
+});
 

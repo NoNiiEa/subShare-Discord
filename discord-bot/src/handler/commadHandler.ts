@@ -8,6 +8,7 @@ import {
   ChatInputCommandInteraction,
   AutocompleteInteraction,
   SlashCommandBuilder,
+  MessageFlags,
 } from "discord.js";
 
 export interface SlashCommand {
@@ -60,15 +61,21 @@ export async function setupCommandHandler(client: Client) {
     } catch (error) {
       console.error(`Error executing /${interaction.commandName}`, error);
 
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply({
-          content: "There was an error while executing this command.",
-        });
-      } else {
-        await interaction.reply({
-          content: "There was an error while executing this command.",
-          ephemeral: true,
-        });
+      // Guard the responder itself: the interaction may already be answered or
+      // expired, in which case replying again throws.
+      try {
+        if (interaction.deferred || interaction.replied) {
+          await interaction.editReply({
+            content: "There was an error while executing this command.",
+          });
+        } else {
+          await interaction.reply({
+            content: "There was an error while executing this command.",
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+      } catch (replyError) {
+        console.error(`Failed to send error response for /${interaction.commandName}`, replyError);
       }
     }
   });

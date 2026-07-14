@@ -2,12 +2,15 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/NoNiiEa/subShare-Discord/src/exception"
 	"github.com/NoNiiEa/subShare-Discord/src/models"
 	"github.com/NoNiiEa/subShare-Discord/src/repository"
 )
+
+const defaultCurrency = "THB"
 
 type GroupService interface {
 	CreateGroup(ctx context.Context, group *models.Group) (*models.Group, error)
@@ -25,45 +28,54 @@ type GroupService interface {
 }
 
 type groupService struct {
+	db       *sql.DB
 	repo     repository.GroupRepository
 	billRepo repository.BillRepository
 }
 
-func NewGroupService(repo repository.GroupRepository, billRepo repository.BillRepository) GroupService {
-	return &groupService{repo: repo, billRepo: billRepo}
+func NewGroupService(db *sql.DB, repo repository.GroupRepository, billRepo repository.BillRepository) GroupService {
+	return &groupService{db: db, repo: repo, billRepo: billRepo}
+}
+
+// recalcAmountPerMember recomputes the per-member share as the total amount
+// split across active members (the members who are actually billed).
+func recalcAmountPerMember(g *models.Group) {
+	active := 0
+	for _, m := range g.Members {
+		if m.Status == models.MemberStatusActive {
+			active++
+		}
+	}
+	if active > 0 {
+		g.AmountPerMember = g.Amount / active
+	} else {
+		g.AmountPerMember = 0
+	}
 }
 
 func (s *groupService) CreateGroup(ctx context.Context, group *models.Group) (*models.Group, error) {
 	if group.Name == "" {
 		return nil, exception.ErrEmptyName
 	}
-
 	if group.Amount < 0 {
 		return nil, exception.ErrNegetiveAmount
 	}
-
-	group.AmountPerMember = group.Amount
-
 	if group.DueDay > 31 || group.DueDay < 1 {
 		return nil, exception.ErrInvalidDueDay
 	}
-
-	var members []models.GroupMember
-	member := models.GroupMember{
-		MemberID: group.OwnerDiscordID,
-		Dept:     0,
-		Status:   models.MemberStatusActive,
-		Payment:  models.PaymentStatusPaid,
-	}
-
-	members = append(members, member)
-
-	group.Members = members
-
 	if group.DiscordGuildID == "" || group.OwnerDiscordID == "" {
 		return nil, exception.ErrInvalidDiscordId
 	}
 
+	group.Members = []models.GroupMember{
+		{
+			MemberID: group.OwnerDiscordID,
+			Dept:     0,
+			Status:   models.MemberStatusActive,
+			Payment:  models.PaymentStatusPaid,
+		},
+	}
+	recalcAmountPerMember(group)
 	group.CreatedAt = time.Now()
 
 	return s.repo.Create(ctx, group)
@@ -84,7 +96,6 @@ func (s *groupService) GetByGuildIdAndUserId(ctx context.Context, guildId string
 	}
 
 	var res []models.Group
-
 	for _, g := range groups {
 		for _, member := range g.Members {
 			if member.MemberID == userId {
@@ -108,7 +119,6 @@ func (s *groupService) GetByGuildIdAndUserIdOwn(ctx context.Context, guildId str
 	}
 
 	var res []models.Group
-
 	for _, g := range groups {
 		if g.OwnerDiscordID == userId {
 			res = append(res, g)
@@ -122,7 +132,6 @@ func (s *groupService) InviteToGroup(ctx context.Context, groupId int, userId st
 	if userId == "" {
 		return nil, exception.ErrInvalidDiscordId
 	}
-
 	if len(memberIds) == 0 {
 		return nil, exception.ErrNoMemberToinvite
 	}
@@ -144,19 +153,17 @@ func (s *groupService) InviteToGroup(ctx context.Context, groupId int, userId st
 		}
 	}
 
-	for _, m_id := range memberIds {
-		if m_id == "" {
+	for _, memberId := range memberIds {
+		if memberId == "" {
 			return nil, exception.ErrInvalidDiscordId
 		}
 
-		var newMember = models.GroupMember{
-			MemberID: m_id,
+		g.Members = append(g.Members, models.GroupMember{
+			MemberID: memberId,
 			Dept:     0,
 			Status:   models.MemberStatusInvited,
 			Payment:  models.PaymentStatusPaid,
-		}
-
-		g.Members = append(g.Members, newMember)
+		})
 	}
 
 	return g, s.repo.Update(ctx, groupId, g)
@@ -173,7 +180,6 @@ func (s *groupService) GetUserPendingInvite(ctx context.Context, userId string, 
 	}
 
 	var res []models.Group
-
 	for _, g := range groups {
 		for _, m := range g.Members {
 			if m.MemberID == userId && m.Status == models.MemberStatusInvited {
@@ -186,6 +192,20 @@ func (s *groupService) GetUserPendingInvite(ctx context.Context, userId string, 
 	return res, nil
 }
 
+// findInvitedMember locates a member who can respond to an invite (must not be
+// already active). Returns the index or an error.
+func findInvitedMember(g *models.Group, userId string) (int, error) {
+	for i, m := range g.Members {
+		if m.MemberID == userId {
+			if m.Status == models.MemberStatusActive {
+				return -1, exception.ErrAlreadyMember
+			}
+			return i, nil
+		}
+	}
+	return -1, exception.ErrNotInvited
+}
+
 func (s *groupService) AcceptInvite(ctx context.Context, groupId int, userId string) (*models.Group, error) {
 	if userId == "" {
 		return nil, exception.ErrInvalidDiscordId
@@ -196,24 +216,13 @@ func (s *groupService) AcceptInvite(ctx context.Context, groupId int, userId str
 		return nil, err
 	}
 
-	var index int = -1
-	for i, m := range g.Members {
-		if m.MemberID == userId {
-			if m.Status == models.MemberStatusActive {
-				return nil, exception.ErrAlreadyMember
-			}
-
-			index = i
-			break
-		}
-	}
-
-	if index == -1 {
-		return nil, exception.ErrNotInvited
+	index, err := findInvitedMember(g, userId)
+	if err != nil {
+		return nil, err
 	}
 
 	g.Members[index].Status = models.MemberStatusActive
-	g.AmountPerMember = int(g.Amount / len(g.Members))
+	recalcAmountPerMember(g)
 
 	if err := s.repo.Update(ctx, groupId, g); err != nil {
 		return nil, err
@@ -232,23 +241,13 @@ func (s *groupService) DeclineInvite(ctx context.Context, groupId int, userId st
 		return nil, err
 	}
 
-	var index int = -1
-	for i, m := range g.Members {
-		if m.MemberID == userId {
-			if m.Status == models.MemberStatusActive {
-				return nil, exception.ErrAlreadyMember
-			}
-
-			index = i
-			break
-		}
-	}
-
-	if index == -1 {
-		return nil, exception.ErrNotInvited
+	index, err := findInvitedMember(g, userId)
+	if err != nil {
+		return nil, err
 	}
 
 	g.Members[index].Status = models.MemberStatusLeft
+
 	if err := s.repo.Update(ctx, groupId, g); err != nil {
 		return nil, err
 	}
@@ -257,7 +256,9 @@ func (s *groupService) DeclineInvite(ctx context.Context, groupId int, userId st
 }
 
 func (s *groupService) CreateBillCycle(ctx context.Context, g *models.Group) error {
-	now := time.Now().UTC()
+	// Use the same (local) clock the cron uses to select due-day, so the
+	// recorded year/month can't disagree with the selection near midnight.
+	now := time.Now()
 	year := now.Year()
 	month := int(now.Month())
 
@@ -277,10 +278,10 @@ func (s *groupService) CreateBillCycle(ctx context.Context, g *models.Group) err
 			MemberID:    m.MemberID,
 			Year:        year,
 			Month:       month,
-			AmountDue:   g.AmountPerMember, // Changed to PerMember (Check if this is correct for you)
-			Currency:    "THB",
+			AmountDue:   g.AmountPerMember,
+			Currency:    defaultCurrency,
 			Status:      models.BillStatusPending,
-			Description: "Monthly Cycle", // Optional: Add a default description
+			Description: "Monthly Cycle",
 			ProofJSON:   "",
 			CreatedAt:   now,
 			UpdatedAt:   now,
@@ -291,11 +292,7 @@ func (s *groupService) CreateBillCycle(ctx context.Context, g *models.Group) err
 		}
 	}
 
-	if err := s.repo.Update(ctx, g.ID, g); err != nil {
-		return err
-	}
-
-	return nil
+	return s.repo.Update(ctx, g.ID, g)
 }
 
 func (s *groupService) GetByDueDay(ctx context.Context, dueDay int) ([]models.Group, error) {
@@ -316,24 +313,36 @@ func (s *groupService) DeleteById(ctx context.Context, groupId int, userId strin
 		return exception.ErrNoPermission
 	}
 
-	bills, err := s.billRepo.GetByGroupID(ctx, groupId)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
+	billTx := s.billRepo.WithTx(tx)
+	groupTx := s.repo.WithTx(tx)
+
+	bills, err := billTx.GetByGroupID(ctx, groupId)
+	if err != nil {
+		return err
+	}
 	for _, b := range bills {
-		if err := s.billRepo.DeleteById(ctx, b.ID); err != nil {
+		if err := billTx.DeleteById(ctx, b.ID); err != nil {
 			return err
 		}
 	}
 
-	return s.repo.DeleteById(ctx, groupId)
+	if err := groupTx.DeleteById(ctx, groupId); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (s *groupService) Update(ctx context.Context, groupId int, groupUpdate *models.Group) error {
 	existing, err := s.repo.GetById(ctx, groupId)
-	if err != nil || existing == nil {
-		return exception.ErrGroupNotFound
+	if err != nil {
+		return err
 	}
 
 	if groupUpdate.Name != "" {
@@ -342,18 +351,7 @@ func (s *groupService) Update(ctx context.Context, groupId int, groupUpdate *mod
 
 	if groupUpdate.Amount > 0 {
 		existing.Amount = groupUpdate.Amount
-		activeMemberCount := 0
-		for _, m := range existing.Members {
-			if m.Status == models.MemberStatusActive {
-				activeMemberCount++
-			}
-		}
-		if activeMemberCount > 0 {
-			existing.AmountPerMember = existing.Amount / activeMemberCount
-		} else {
-			existing.AmountPerMember = 0
-		}
-
+		recalcAmountPerMember(existing)
 	}
 
 	if groupUpdate.DueDay >= 1 && groupUpdate.DueDay <= 31 {
