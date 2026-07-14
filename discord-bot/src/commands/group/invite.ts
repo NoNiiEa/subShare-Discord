@@ -1,54 +1,59 @@
-import { 
-    ChatInputCommandInteraction, 
-    ActionRowBuilder, 
-    StringSelectMenuBuilder, 
-    StringSelectMenuOptionBuilder, 
+import {
+    ChatInputCommandInteraction,
+    ActionRowBuilder,
+    StringSelectMenuBuilder,
+    StringSelectMenuOptionBuilder,
     ComponentType,
     MessageFlags
 } from "discord.js";
-import { BackendClient } from "../../api/index.js";
-import { config } from "../../config.js";
+import { backend } from "../../utils/backend.js";
+import { requireGuild } from "../../utils/interaction.js";
+import { toUserMessage, ErrorRule } from "../../utils/errors.js";
+
+const INVITE_ERROR_RULES: ErrorRule[] = [
+    { status: 400, match: ["already"], message: "This user has already been invited to this group." },
+];
 
 export async function executeInvite(interaction: ChatInputCommandInteraction) {
     const targetUser = interaction.options.getUser("invite-user", true);
     const userId = interaction.user.id;
-    const guildId = interaction.guildId
 
     if (userId === targetUser.id) {
         await interaction.reply({
-            content: "You can't invite yourself you your own group.",
+            content: "You can't invite yourself to your own group.",
             flags: MessageFlags.Ephemeral,
         });
         return;
     }
 
-    if (!guildId) {
+    const guildId = await requireGuild(interaction);
+    if (!guildId) return;
+
+    let groups;
+    try {
+        groups = await backend.group.viewOwn(userId, guildId);
+    } catch (err: any) {
+        console.error("Invite (fetch groups) Error:", err);
         await interaction.reply({
-            content: "This command can only be used inside a server (not in DMs).",
+            content: `❌ ${toUserMessage(err)}`,
             flags: MessageFlags.Ephemeral,
         });
         return;
     }
-
-    const backend = new BackendClient({
-        baseUrl: config.BACKEND_BASE_URL || "http://localhost:8000",
-        apiKey: config.BACKEND_API_KEY
-    });
-
-    const groups = await backend.group.viewOwn(userId, guildId);
 
     if (groups.length === 0) {
-        return interaction.reply({ 
-            content: "❌ You don't own any groups to invite people to.", 
+        await interaction.reply({
+            content: "❌ You don't own any groups to invite people to.",
             flags: MessageFlags.Ephemeral,
         });
+        return;
     }
 
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("group_select")
         .setPlaceholder("Select a group to invite them to...")
         .addOptions(
-            groups.map((group) => 
+            groups.map((group) =>
                 new StringSelectMenuOptionBuilder()
                     .setLabel(group.name)
                     .setDescription(`Price: ${group.amount}`)
@@ -56,8 +61,7 @@ export async function executeInvite(interaction: ChatInputCommandInteraction) {
             )
         );
 
-    const row = new ActionRowBuilder<StringSelectMenuBuilder>()
-        .addComponents(selectMenu);
+    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 
     const response = await interaction.reply({
         content: `Select which group you want to invite **${targetUser.username}** to:`,
@@ -65,46 +69,39 @@ export async function executeInvite(interaction: ChatInputCommandInteraction) {
         flags: MessageFlags.Ephemeral,
     });
 
+    // Wait for the user to pick a group. A timeout is the only expected failure here.
+    let confirmation;
     try {
-        const confirmation = await response.awaitMessageComponent({ 
-            filter: (i) => i.user.id === interaction.user.id, // Ensure only the original user can click
+        confirmation = await response.awaitMessageComponent({
+            filter: (i) => i.user.id === interaction.user.id,
             componentType: ComponentType.StringSelect,
-            time: 60000 // 60 seconds timeout
+            time: 60000,
         });
+    } catch {
+        await interaction.editReply({
+            content: "⏳ Invite cancelled: You took too long to select a group.",
+            components: [],
+        }).catch(() => {});
+        return;
+    }
 
-        const selectedGroupId = confirmation.values[0];
-        const selectedGroup = groups.find(g => g.id.toString() === selectedGroupId) || { id: 0, name: "unknow"};
+    const selectedGroup = groups.find((g) => g.id.toString() === confirmation.values[0]);
+    if (!selectedGroup) {
+        await confirmation.update({ content: "❌ Selected group not found.", components: [] });
+        return;
+    }
 
-        const memberIds: string[] = [targetUser.id]
-        
-        
-        await backend.group.invite({
-            owner_id: userId,
-            member_ids: memberIds
-        }, selectedGroup.id)
-
+    try {
+        await backend.group.invite({ owner_id: userId, member_ids: [targetUser.id] }, selectedGroup.id);
         await confirmation.update({
             content: `Successfully invited **${targetUser.username}** to **${selectedGroup.name}**!`,
-            components: []
+            components: [],
         });
     } catch (err: any) {
-        if (err.message && err.message.includes('[400]')) {
-            await interaction.editReply({
-                content: "User is already invite to this group.",
-                components: [] 
-            });
-            return;
-        } else if (err.message && err.message.includes('[500]')) {
-            await interaction.editReply({
-                content: "❌ Something went wrong while inviting.",
-                components: [] 
-            });
-            return;
-        }
-
-        await interaction.editReply({ 
-            content: "⏳ Invite cancelled: You took too long to select a group.", 
-            components: [] 
+        console.error("Invite Error:", err);
+        await confirmation.update({
+            content: `❌ ${toUserMessage(err, INVITE_ERROR_RULES)}`,
+            components: [],
         });
     }
 }

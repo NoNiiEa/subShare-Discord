@@ -61,7 +61,7 @@ export const registerCommands = async () => {
 
     try {
         console.log(`\nStarted refreshing ${commands.length} application (/) commands.`);
-        if (config.DEVELOPER) {
+        if (config.DEVELOPER === "true") {
             await rest.put(
                 Routes.applicationGuildCommands(clientId, guildId),
                 { body: commands },

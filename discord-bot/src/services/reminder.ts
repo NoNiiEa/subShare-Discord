@@ -1,125 +1,135 @@
 import cron from "node-cron";
-import { Client, EmbedBuilder, ChannelType, TextChannel, Guild } from "discord.js";
-import { BackendClient } from "../api/index.js";
-import { config } from "../config.js";
+import { Client, ChannelType, TextChannel, Guild, GuildMember } from "discord.js";
+import { backend } from "../utils/backend.js";
 
-const backend = new BackendClient({
-    baseUrl: config.BACKEND_BASE_URL || "http://localhost:8000",
-    apiKey: config.BACKEND_API_KEY
-});
+/**
+ * Mentions per message. Discord caps a message at 2000 characters and a mention
+ * is roughly 22, so this stays well clear of the limit.
+ */
+const MENTIONS_PER_MESSAGE = 50;
 
-export async function checkUnpaidBills(client: Client) {
-    console.log("⏰ Running unpaid bill check (Channel Mode)...");
+/** Monday 08:00 — a single weekly nudge rather than a daily one. */
+const WEEKLY_SCHEDULE = "0 8 * * 1";
+
+/**
+ * Reminds everyone with an unpaid bill, one message per guild.
+ *
+ * Deliberately says nothing about amounts or groups: people can run
+ * `/bill payall` to see their own totals. Returns the number of members tagged.
+ */
+export async function checkUnpaidBills(client: Client): Promise<number> {
+    console.log("⏰ Running unpaid bill check...");
 
     try {
-        const today = new Date().getDate();
         const guilds = await client.guilds.fetch();
-        
-        let totalSent = 0;
 
-        for (const [guildId, _] of guilds) {
+        let totalTagged = 0;
+
+        for (const [guildId] of guilds) {
             try {
-                const guild = await client.guilds.fetch(guildId);
-                
-                const targetChannel = await findPaymentChannel(guild);
-
-                if (!targetChannel) {
-                    console.warn(`[${guild.name}] Skipped: No suitable channel found.`);
-                    continue;
-                }
-
-                const unpaidBills = await backend.bill.GetUnpaidByGuild(guildId);
-                
-                if (!unpaidBills || unpaidBills.length === 0) continue;
-
-                console.log(`[${guild.name}] Found ${unpaidBills.length} unpaid bills.`);
-
-                const groupNameCache = new Map<number, string>();
-
-                for (const bill of unpaidBills) {
-                    try {
-                        let groupName = groupNameCache.get(bill.group_id);
-                        
-                        if (!groupName) {
-                            const group = await backend.group.get(bill.group_id);
-                            groupName = group.name;
-                            groupNameCache.set(bill.group_id, groupName);
-                        }
-
-                        const embed = new EmbedBuilder()
-                            .setTitle("⚠️ Payment Due Reminder")
-                            .setDescription(`Hello <@${bill.member_id}>! \n\nYour payment for **${groupName}** is currently **Pending**.`)
-                            .setColor("Red")
-                            .addFields(
-                                { name: "Amount Due", value: `${bill.amount_due} THB`, inline: true },
-                                { name: "Billing Cycle", value: `${bill.month}/${bill.year}`, inline: true },
-                                { name: "Due Date", value: `Day ${today}`, inline: true } 
-                            )
-                            .setFooter({ text: "Use /bill paid to submit your slip" });
-
-                        await targetChannel.send({ 
-                            content: `<@${bill.member_id}>`, // This triggers the PING
-                            embeds: [embed] 
-                        });
-                        
-                        totalSent++;
-                        
-                        await new Promise(r => setTimeout(r, 1000)); 
-
-                    } catch (e) {
-                        console.error(`Could not process bill for user ${bill.member_id}`, e);
-                    }
-                }
+                totalTagged += await remindGuild(client, guildId);
             } catch (e) {
                 console.error(`Failed processing guild ${guildId}`, e);
             }
         }
-        
-        return totalSent;
 
+        return totalTagged;
     } catch (err) {
         console.error("❌ Critical error in bill checker:", err);
         return 0;
     }
 }
 
+/** Reminds one guild's debtors. Returns how many members were tagged. */
+async function remindGuild(client: Client, guildId: string): Promise<number> {
+    const guild = await client.guilds.fetch(guildId);
+    const targetChannel = await findPaymentChannel(guild);
+
+    if (!targetChannel) {
+        console.warn(`[${guild.name}] Skipped: No suitable channel found.`);
+        return 0;
+    }
+
+    const unpaidBills = await backend.bill.GetUnpaidByGuild(guildId);
+    if (!unpaidBills || unpaidBills.length === 0) return 0;
+
+    // One tag per person, however many bills they owe.
+    const debtors = [...new Set(unpaidBills.map((bill) => bill.member_id))];
+
+    // Fetch only the specific debtors to avoid loading the entire guild membership
+    const members = await guild.members.fetch({ user: debtors }).catch(() => new Map());
+    const present = debtors.filter((memberId) => members.has(memberId));
+
+    if (present.length === 0) {
+        console.log(`[${guild.name}] ${debtors.length} debtor(s), none still in the server.`);
+        return 0;
+    }
+
+    console.log(
+        `[${guild.name}] ${unpaidBills.length} unpaid bill(s) across ${present.length} member(s).`
+    );
+
+    for (let i = 0; i < present.length; i += MENTIONS_PER_MESSAGE) {
+        const mentions = present
+            .slice(i, i + MENTIONS_PER_MESSAGE)
+            .map((memberId) => `<@${memberId}>`)
+            .join(" ");
+
+        await targetChannel.send({
+            content: `⏰ ${mentions}\nYou have unpaid bills. Run \`/bill payall\` to see what you owe and pay.`,
+        });
+    }
+
+    return present.length;
+}
+
 async function findPaymentChannel(guild: Guild): Promise<TextChannel | null> {
     await guild.channels.fetch();
-    
+
+    const botMember = guild.members.me;
+    if (!botMember) {
+        console.warn(`[${guild.name}] Bot member not available; skipping.`);
+        return null;
+    }
+
+    const canSend = (channel: { permissionsFor(member: GuildMember): { has(perm: "SendMessages"): boolean } | null }) =>
+        channel.permissionsFor(botMember)?.has("SendMessages");
+
     const paymentChannel = guild.channels.cache.find(
-        (c) => c.name.toLowerCase() === "payment" && 
-               c.type === ChannelType.GuildText &&
-               c.permissionsFor(guild.members.me!)?.has("SendMessages")
+        (c) =>
+            c.name.toLowerCase() === "payment" &&
+            c.type === ChannelType.GuildText &&
+            canSend(c)
     ) as TextChannel;
-    
+
     if (paymentChannel) {
         console.log(`[${guild.name}] Found payment channel: #${paymentChannel.name}`);
         return paymentChannel;
     }
 
-    if (guild.systemChannel && 
-        guild.systemChannel.permissionsFor(guild.members.me!)?.has("SendMessages")) {
+    if (guild.systemChannel && canSend(guild.systemChannel)) {
         console.log(`[${guild.name}] Using system channel: #${guild.systemChannel.name}`);
         return guild.systemChannel;
     }
 
-    const fallbackChannel = guild.channels.cache.find(
-        (c) => c.type === ChannelType.GuildText && 
-               c.permissionsFor(guild.members.me!)?.has("SendMessages")
-    ) as TextChannel || null;
-    
+    const fallbackChannel = (guild.channels.cache.find(
+        (c) => c.type === ChannelType.GuildText && canSend(c)
+    ) as TextChannel) || null;
+
     if (fallbackChannel) {
         console.log(`[${guild.name}] Using fallback channel: #${fallbackChannel.name}`);
     }
-    
+
     return fallbackChannel;
 }
 
-export function initDailyReminders(client: Client) {
-    cron.schedule("0 8 * * *", () => {
-        checkUnpaidBills(client);
+export function initWeeklyReminders(client: Client) {
+    cron.schedule(WEEKLY_SCHEDULE, () => {
+        checkUnpaidBills(client).catch((err) =>
+            console.error("Scheduled bill check failed:", err)
+        );
     }, {
         timezone: "Asia/Bangkok"
     });
-    console.log("✅ Daily Reminder Service Started");
+    console.log("✅ Weekly Reminder Service Started (Mondays, 08:00 Asia/Bangkok)");
 }

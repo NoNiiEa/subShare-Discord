@@ -97,3 +97,18 @@ export interface PayRequest {
     bill_id: number; // Backend expects int, not string
     proof_url: string;
 }
+
+export interface PayMultipleRequest {
+    user_id: string;
+    guild_id: string;
+    bill_ids: number[];
+    proof_url: string;
+}
+
+export interface PayMultipleResponse {
+    bills: BillResponse[];
+    total_due: number;
+    amount_paid: number;
+    /** How much of an overpayment was applied to the payer's remaining debt. */
+    surplus_credited: number;
+}

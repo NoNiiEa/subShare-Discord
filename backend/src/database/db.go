@@ -16,16 +16,20 @@ func NewDatabase() (*sql.DB, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "app.db")
-	db, err := sql.Open("sqlite3", dbPath+"?cache=shared&mode=rwc")
+db, err := sql.Open("sqlite3", dbPath+"?cache=shared&mode=rwc&_busy_timeout=5000&_journal_mode=WAL")
 	if err != nil {
 		return nil, err
 	}
+
+	// With WAL mode enabled, SQLite supports concurrent readers and a single writer.
+	// We can allow multiple open connections to avoid blocking read queries.
+	db.SetMaxOpenConns(10)
 
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
 
-	if err := createTable(db); err != nil {
+	if err := CreateTable(db); err != nil {
 		return nil, err
 	}
 
@@ -33,7 +37,9 @@ func NewDatabase() (*sql.DB, error) {
 	return db, nil
 }
 
-func createTable(db *sql.DB) error {
+// CreateTable applies the schema to db. Exported so tests can build the real
+// schema against an in-memory database.
+func CreateTable(db *sql.DB) error {
 	const createGroupsTable = `
 	CREATE TABLE IF NOT EXISTS groups (
 		id                INTEGER PRIMARY KEY,

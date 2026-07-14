@@ -22,3 +22,10 @@ type BillPayRequest struct {
 	BillID   int    `json:"bill_id"`
 	ProofURL string `json:"proof_url"`
 }
+
+type BillPayMultipleRequest struct {
+	UserID   string `json:"user_id"`
+	GuildID  string `json:"guild_id"`
+	BillIDs  []int  `json:"bill_ids"`
+	ProofURL string `json:"proof_url"`
+}
