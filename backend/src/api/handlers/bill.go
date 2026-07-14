@@ -52,6 +52,21 @@ func (h *BillHandler) Pay(w http.ResponseWriter, r *http.Request) {
 	helper.WriteJSON(w, http.StatusOK, b)
 }
 
+func (h *BillHandler) PayMultiple(w http.ResponseWriter, r *http.Request) {
+	var req schemas.BillPayMultipleRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	res, err := h.service.PayMultiple(r.Context(), req.UserID, req.GuildID, req.BillIDs, req.ProofURL)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	helper.WriteJSON(w, http.StatusOK, res)
+}
+
 func (h *BillHandler) GetUnpaidByGuildId(w http.ResponseWriter, r *http.Request) {
 	bills, err := h.service.GetUnpaidByGuildId(r.Context(), r.PathValue("guildId"))
 	if err != nil {

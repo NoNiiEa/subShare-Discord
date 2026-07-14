@@ -62,6 +62,12 @@ var serviceErrorMap = []errorMapping{
 	{exception.ErrSlipPendingBankDelay, http.StatusServiceUnavailable, "This slip isn't confirmed by the bank yet. Please resubmit in a few minutes."},
 	{exception.ErrTimeOut, http.StatusGatewayTimeout, "Verification timed out. Please try again."},
 
+	// Batch bill payment (bot-facing wording — keep stable)
+	{exception.ErrNoBillsSelected, http.StatusBadRequest, "no bills selected"},
+	{exception.ErrTooManyBills, http.StatusBadRequest, "you can pay at most 25 bills at once"},
+	{exception.ErrMixedPayee, http.StatusBadRequest, "selected bills must be paid to the same account"},
+	{exception.ErrSlipInsufficient, http.StatusBadRequest, "slip amount is less than the total of the selected bills"},
+
 	// Bill create validation
 	{exception.ErrInvalidID, http.StatusBadRequest, "invalid id"},
 	{exception.ErrInvalidYear, http.StatusBadRequest, "invalid year"},
