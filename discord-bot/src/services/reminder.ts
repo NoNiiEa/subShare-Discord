@@ -56,8 +56,8 @@ async function remindGuild(client: Client, guildId: string): Promise<number> {
     // One tag per person, however many bills they owe.
     const debtors = [...new Set(unpaidBills.map((bill) => bill.member_id))];
 
-    // Someone who has left the server would otherwise render as a dead <@id>.
-    const members = await guild.members.fetch();
+    // Fetch only the specific debtors to avoid loading the entire guild membership
+    const members = await guild.members.fetch({ user: debtors }).catch(() => new Map());
     const present = debtors.filter((memberId) => members.has(memberId));
 
     if (present.length === 0) {
