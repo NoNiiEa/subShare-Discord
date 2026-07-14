@@ -439,6 +439,9 @@ func (s *billService) PayMultiple(ctx context.Context, userId string, guildId st
 		if err != nil {
 			return nil, err
 		}
+		if g == nil {
+			return nil, exception.ErrNotFound
+		}
 		groups[b.GroupID] = g
 	}
 
@@ -481,10 +484,28 @@ func (s *billService) PayMultiple(ctx context.Context, userId string, guildId st
 	// there is no principled way to split it, so it is left uncredited.
 	var surplusCredited float64
 	if surplus := vs.Amount - float64(total); surplus > amountEpsilon && len(groups) == 1 {
-		if err := applyPaymentToMember(groups[bills[0].GroupID], userId, surplus); err != nil {
+		g := groups[bills[0].GroupID]
+		var initialDept int
+		for _, m := range g.Members {
+			if m.MemberID == userId {
+				initialDept = m.Dept
+				break
+			}
+		}
+
+		if err := applyPaymentToMember(g, userId, surplus); err != nil {
 			return nil, err
 		}
-		surplusCredited = surplus
+
+		var finalDept int
+		for _, m := range g.Members {
+			if m.MemberID == userId {
+				finalDept = m.Dept
+				break
+			}
+		}
+
+		surplusCredited = float64(initialDept - finalDept)
 	}
 
 	if err := s.persistPaymentBatch(ctx, bills, groups, vs.TransRef, now); err != nil {
