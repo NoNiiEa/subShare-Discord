@@ -1,8 +1,6 @@
 import {
     SlashCommandBuilder,
-    ChatInputCommandInteraction,
-    EmbedBuilder,
-    MessageFlags
+    ChatInputCommandInteraction
 } from "discord.js";
 
 export default {

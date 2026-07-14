@@ -63,10 +63,10 @@ func (c *okSlipClient) CheckSlip(ctx context.Context, slipUrl string) (*Response
 	resp, err := c.httpClient.Do(req)
     if err != nil {
         if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-            return nil, fmt.Errorf("okslip request timed out: %w", err)
+            return nil, fmt.Errorf("%w: %v", ErrTimeout, err)
         }
         if errors.Is(err, context.DeadlineExceeded) {
-            return nil, fmt.Errorf("okslip context deadline exceeded: %w", err)
+            return nil, fmt.Errorf("%w: %v", ErrTimeout, err)
         }
         return nil, err
     }

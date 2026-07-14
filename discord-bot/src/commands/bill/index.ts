@@ -1,7 +1,8 @@
-import { 
-    SlashCommandBuilder, 
-    ChatInputCommandInteraction, 
-    AutocompleteInteraction 
+import {
+    SlashCommandBuilder,
+    ChatInputCommandInteraction,
+    AutocompleteInteraction,
+    MessageFlags
 } from "discord.js";
 import { executePaid, autocompletePaid } from "./paid.js";
 
@@ -44,9 +45,9 @@ export default {
                 await executePaid(interaction);
                 break;
             default:
-                await interaction.reply({ 
-                    content: "Unknown subcommand.", 
-                    ephemeral: true 
+                await interaction.reply({
+                    content: "Unknown subcommand.",
+                    flags: MessageFlags.Ephemeral
                 });
         }
     },

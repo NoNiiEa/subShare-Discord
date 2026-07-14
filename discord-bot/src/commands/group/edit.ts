@@ -1,50 +1,18 @@
-import { ChatInputCommandInteraction, MessageFlags, EmbedBuilder, AutocompleteInteraction, } from "discord.js";
-import { BackendClient } from "../../api/index.js";
-import { config } from "../../config.js";
-import { GroupResponse } from "../../api/types.js";
+import {
+    ChatInputCommandInteraction,
+    MessageFlags,
+    EmbedBuilder,
+    AutocompleteInteraction,
+} from "discord.js";
+import { backend } from "../../utils/backend.js";
+import { toUserMessage } from "../../utils/errors.js";
+import { respondGroupAutocomplete } from "../../utils/groupAutocomplete.js";
 
-export async function autocompleteEdit(interaction: AutocompleteInteraction) {
-    const focusedValue = interaction.options.getFocused();
-    const userId = interaction.user.id;
-    const guildId = interaction.guildId;
-
-    if (!guildId) {
-        await interaction.respond([]);
-        return;
-    }
-
-    if (interaction.responded) {
-        return;
-    }
-
-    try {
-        const backend = new BackendClient({
-            baseUrl: config.BACKEND_BASE_URL || "http://localhost:8000",
-            apiKey: config.BACKEND_API_KEY
-        });
-
-        // Get only groups owned by the user
-        const groups = await backend.group.viewOwn(userId, guildId);
-
-        const searchTerm = focusedValue.toLowerCase();
-        const filtered = groups.filter((group: GroupResponse) => 
-            group.name.toLowerCase().includes(searchTerm) ||
-            String(group.id).includes(searchTerm)
-        );
-
-        const choices = filtered.slice(0, 25).map((group: GroupResponse) => ({
-            name: `${group.name} (ID: ${group.id})`,
-            value: String(group.id)
-        }));
-
-        await interaction.respond(choices);
-
-    } catch (err) {
-        console.error("Autocomplete Error:", err);
-        if (!interaction.responded) {
-            await interaction.respond([]);
-        }
-    }
+export function autocompleteEdit(interaction: AutocompleteInteraction) {
+    // Only groups owned by the user can be edited.
+    return respondGroupAutocomplete(interaction, (userId, guildId) =>
+        backend.group.viewOwn(userId, guildId)
+    );
 }
 
 export async function executeEdit(interaction: ChatInputCommandInteraction) {
@@ -72,11 +40,6 @@ export async function executeEdit(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    const backend = new BackendClient({
-        baseUrl: config.BACKEND_BASE_URL || "http://localhost:8000",
-        apiKey: config.BACKEND_API_KEY
-    });
-
     await interaction.deferReply({
         flags: MessageFlags.Ephemeral,
     });
@@ -84,7 +47,7 @@ export async function executeEdit(interaction: ChatInputCommandInteraction) {
     try {
         const payload = {
             name: name ?? "",
-            amount: amount ?? null, 
+            amount: amount ?? null,
             due_day: dueDay ?? null,
             payment: {
                 method: paymentMethod ?? "",
@@ -110,16 +73,9 @@ export async function executeEdit(interaction: ChatInputCommandInteraction) {
         await interaction.editReply({ embeds: [embed] });
 
     } catch (err: any) {
-        console.error("Edit Error:", err);
-        
-        const detail =
-            err?.response?.data?.error ||
-            err?.response?.data?.message ||
-            err?.message ||
-            "Unknown error occurred";
-
+        console.error("Edit Group Error:", err);
         await interaction.editReply({
-            content: `❌ **Failed to update group**\n> ${detail}`,
+            content: `❌ **Failed to update group**\n> ${toUserMessage(err)}`,
         });
     }
 }
