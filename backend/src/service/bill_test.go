@@ -138,7 +138,8 @@ func (f *fixture) seedBill(t *testing.T, groupId int, amount int, member string)
 		t.Fatalf("seed bill: %v", err)
 	}
 
-	// Create does not populate the generated id; find it by re-reading the group's bills.
+	// Read back through the repository so the seeded bill matches exactly what a
+	// caller would load, timestamp rounding included.
 	bills, err := f.billRepo.GetByGroupID(context.Background(), groupId)
 	if err != nil {
 		t.Fatalf("read back bill: %v", err)
@@ -266,8 +267,12 @@ func TestPayMultiple_OverpaymentCreditsSurplusToGroup(t *testing.T) {
 	if res.AmountPaid != 500 || res.TotalDue != 150 {
 		t.Errorf("got paid=%v total=%d, want 500/150", res.AmountPaid, res.TotalDue)
 	}
-	if res.SurplusCredited != 350 {
-		t.Errorf("surplus credited = %v, want 350", res.SurplusCredited)
+	// SurplusCredited is what actually landed on the debt, not the raw
+	// overpayment: the bill already took the debt from 400 to 250, so only 250
+	// of the 350 surplus can be applied and the other 100 is lost. Reporting
+	// 350 here would put a number in the receipt that never reached anyone.
+	if res.SurplusCredited != 250 {
+		t.Errorf("surplus credited = %v, want 250 (350 surplus, capped by the 250 debt left)", res.SurplusCredited)
 	}
 	// 400 debt - 150 bill - 350 surplus, clamped at zero.
 	if got := f.memberDept(t, g.ID, testPayer); got != 0 {
@@ -494,13 +499,13 @@ func TestPay_UnderpaymentStillCreatesRemainderBill(t *testing.T) {
 	g := f.seedGroup(t, "Netflix", 150, testOwner, testAccount)
 	b := f.seedBill(t, g.ID, 150, testPayer)
 
-	paid, err := f.svc.Pay(context.Background(), testPayer, testGuild, b.ID, "http://slip")
+	res, err := f.svc.Pay(context.Background(), testPayer, testGuild, b.ID, "http://slip")
 	if err != nil {
 		t.Fatalf("Pay: %v", err)
 	}
 
-	if paid.Status != models.BillStatusVerified {
-		t.Errorf("status = %q, want verified", paid.Status)
+	if res.Bill.Status != models.BillStatusVerified {
+		t.Errorf("status = %q, want verified", res.Bill.Status)
 	}
 	if got := f.memberDept(t, g.ID, testPayer); got != 50 {
 		t.Errorf("dept = %d, want 50 (150 - 100 paid)", got)
@@ -519,5 +524,37 @@ func TestPay_UnderpaymentStillCreatesRemainderBill(t *testing.T) {
 	}
 	if remainder.Status != models.BillStatusPending {
 		t.Errorf("remainder status = %q, want pending", remainder.Status)
+	}
+
+	// The remainder must be reported back with its real id, so callers never
+	// have to search for it.
+	if res.RemainingBill == nil {
+		t.Fatal("RemainingBill = nil, want the balance-remaining bill")
+	}
+	if res.RemainingBill.ID != remainder.ID {
+		t.Errorf("RemainingBill.ID = %d, want %d", res.RemainingBill.ID, remainder.ID)
+	}
+	if res.RemainingBill.AmountDue != 50 {
+		t.Errorf("RemainingBill.AmountDue = %d, want 50", res.RemainingBill.AmountDue)
+	}
+}
+
+// A fully-covered bill must report no remainder at all.
+func TestPay_FullPaymentReportsNoRemainder(t *testing.T) {
+	f := newFixture(t, &fakeOkSlip{resp: slipFor(150, "ref-full")})
+
+	g := f.seedGroup(t, "Netflix", 150, testOwner, testAccount)
+	b := f.seedBill(t, g.ID, 150, testPayer)
+
+	res, err := f.svc.Pay(context.Background(), testPayer, testGuild, b.ID, "http://slip")
+	if err != nil {
+		t.Fatalf("Pay: %v", err)
+	}
+
+	if res.RemainingBill != nil {
+		t.Errorf("RemainingBill = %+v, want nil", res.RemainingBill)
+	}
+	if got := f.countBills(t); got != 1 {
+		t.Errorf("bills = %d, want 1 (no remainder created)", got)
 	}
 }

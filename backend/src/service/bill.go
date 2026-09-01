@@ -39,13 +39,22 @@ type PayMultipleResult struct {
 	SurplusCredited float64       `json:"surplus_credited"`
 }
 
+// PayResult is the outcome of settling a single bill. RemainingBill is the
+// "balance remaining" bill created when the slip underpaid, or nil when the
+// bill was covered in full — returned explicitly so the caller never has to
+// guess which bill the remainder is.
+type PayResult struct {
+	Bill          *models.Bill `json:"bill"`
+	RemainingBill *models.Bill `json:"remaining_bill,omitempty"`
+}
+
 type BillService interface {
 	Create(ctx context.Context, b *models.Bill) error
 	GetByGuildId(ctx context.Context, guildId string) ([]models.Bill, error)
 	GetByGuildIdAndUserId(ctx context.Context, guildId string, userId string) ([]models.Bill, error)
 	GetUnpaidByGuildId(ctx context.Context, guildId string) ([]models.Bill, error)
 	GetUnpaidByGuildIdAndUserId(ctx context.Context, guildId string, userId string) ([]models.Bill, error)
-	Pay(ctx context.Context, userId string, guildId string, billId int, proofUrl string) (*models.Bill, error)
+	Pay(ctx context.Context, userId string, guildId string, billId int, proofUrl string) (*PayResult, error)
 	PayMultiple(ctx context.Context, userId string, guildId string, billIds []int, proofUrl string) (*PayMultipleResult, error)
 	DeleteById(ctx context.Context, billId int) error
 }
@@ -155,7 +164,7 @@ func (s *billService) filterGuildBills(ctx context.Context, guildId string, keep
 	return res, nil
 }
 
-func (s *billService) Pay(ctx context.Context, userId string, guildId string, billId int, proofUrl string) (*models.Bill, error) {
+func (s *billService) Pay(ctx context.Context, userId string, guildId string, billId int, proofUrl string) (*PayResult, error) {
 	if guildId == "" || userId == "" {
 		return nil, exception.ErrInvalidDiscordId
 	}
@@ -200,11 +209,12 @@ func (s *billService) Pay(ctx context.Context, userId string, guildId string, bi
 		return nil, err
 	}
 
-	if err := s.persistPayment(ctx, billId, b, g, vs.TransRef, amountPaid, now); err != nil {
+	remaining, err := s.persistPayment(ctx, billId, b, g, vs.TransRef, amountPaid, now)
+	if err != nil {
 		return nil, err
 	}
 
-	return b, nil
+	return &PayResult{Bill: b, RemainingBill: remaining}, nil
 }
 
 // verifiedSlip is a slip that has passed provider verification, the freshness
@@ -348,7 +358,8 @@ func applyPaymentToMember(g *models.Group, userId string, amountPaid float64) er
 }
 
 // persistPayment atomically records the slip, updates the bill and group, and
-// creates a balance-remaining bill on underpayment. All-or-nothing.
+// creates a balance-remaining bill on underpayment. All-or-nothing. Returns the
+// balance-remaining bill (with its generated id) when one was created, else nil.
 func (s *billService) persistPayment(
 	ctx context.Context,
 	billId int,
@@ -357,10 +368,10 @@ func (s *billService) persistPayment(
 	transRef string,
 	amountPaid float64,
 	now time.Time,
-) error {
+) (*models.Bill, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
@@ -371,17 +382,18 @@ func (s *billService) persistPayment(
 	// Record the slip first: a duplicate transRef aborts before any bill is
 	// marked paid, so the same slip can never be replayed.
 	if err := slipTx.Create(ctx, &models.Slip{TransRef: transRef, SubmittedAt: &now}); err != nil {
-		return err
+		return nil, err
 	}
 	if err := billTx.Update(ctx, billId, b); err != nil {
-		return err
+		return nil, err
 	}
 	if err := groupTx.Update(ctx, g.ID, g); err != nil {
-		return err
+		return nil, err
 	}
 
+	var remaining *models.Bill
 	if amountPaid < float64(b.AmountDue) {
-		remaining := models.Bill{
+		remaining = &models.Bill{
 			GroupID:     g.ID,
 			GuildID:     g.DiscordGuildID,
 			MemberID:    b.MemberID,
@@ -394,12 +406,16 @@ func (s *billService) persistPayment(
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}
-		if err := billTx.Create(ctx, &remaining); err != nil {
-			return err
+		if err := billTx.Create(ctx, remaining); err != nil {
+			return nil, err
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return remaining, nil
 }
 
 // PayMultiple settles several bills with a single slip. Every selected bill must

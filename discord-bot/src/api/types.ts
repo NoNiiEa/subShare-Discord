@@ -98,6 +98,16 @@ export interface PayRequest {
     proof_url: string;
 }
 
+/**
+ * The backend reports the balance-remaining bill directly, so the bot never has
+ * to work out which bill the remainder is. `remaining_bill` is absent when the
+ * slip covered the bill in full.
+ */
+export interface PayResponse {
+    bill: BillResponse;
+    remaining_bill?: BillResponse | null;
+}
+
 export interface PayMultipleRequest {
     user_id: string;
     guild_id: string;

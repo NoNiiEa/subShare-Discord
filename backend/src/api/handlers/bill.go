@@ -43,13 +43,13 @@ func (h *BillHandler) Pay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b, err := h.service.Pay(r.Context(), req.UserID, req.GuildID, req.BillID, req.ProofURL)
+	res, err := h.service.Pay(r.Context(), req.UserID, req.GuildID, req.BillID, req.ProofURL)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
 
-	helper.WriteJSON(w, http.StatusOK, b)
+	helper.WriteJSON(w, http.StatusOK, res)
 }
 
 func (h *BillHandler) PayMultiple(w http.ResponseWriter, r *http.Request) {
