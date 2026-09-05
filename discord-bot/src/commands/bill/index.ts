@@ -38,20 +38,13 @@ export default {
         )
 
         // Subcommand: /bill payall
-        // Bills are chosen from a select menu rather than an option, since a
-        // slash command cannot collect a multi-select up front. The slip is
-        // optional: without it the command only quotes the total, so the user
-        // can find out what to transfer before transferring it.
+        // Takes no options at all: bills are chosen from a select menu and the
+        // slip is collected mid-flow by a modal, so the payment is one command
+        // and the bill selection can never be skipped.
         .addSubcommand((subcommand) =>
             subcommand
                 .setName("payall")
-                .setDescription("Total up several bills, or pay them all with one slip")
-                .addAttachmentOption((option) =>
-                    option
-                        .setName("slip")
-                        .setDescription("Your transfer slip (JPG/PNG). Leave empty to just see the total first.")
-                        .setRequired(false)
-                )
+                .setDescription("Select several bills and pay them with one slip")
         ),
 
     // MAIN EXECUTION HANDLER (User hits Enter)

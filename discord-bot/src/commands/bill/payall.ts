@@ -1,10 +1,16 @@
 import {
     ChatInputCommandInteraction,
+    ButtonInteraction,
+    ModalSubmitInteraction,
+    Attachment,
     ActionRowBuilder,
     StringSelectMenuBuilder,
     StringSelectMenuOptionBuilder,
     ButtonBuilder,
     ButtonStyle,
+    ModalBuilder,
+    LabelBuilder,
+    FileUploadBuilder,
     ComponentType,
     MessageFlags,
 } from "discord.js";
@@ -17,7 +23,20 @@ import { BillResponse, GroupResponse, PayMultipleResponse } from "../../api/type
 
 /** Discord's hard cap on select-menu options. The backend enforces it too. */
 const MAX_SELECT = 25;
-const STEP_TIMEOUT = 120_000;
+
+/**
+ * The selection step spans a trip to the user's banking app, so it has to stay
+ * open far longer than a normal prompt. 14 minutes leaves headroom under
+ * Discord's 15-minute interaction-token lifetime, which is the hard ceiling.
+ */
+const SELECT_TIMEOUT = 840_000;
+/** Time to fill in and submit the slip modal once it is open. */
+const MODAL_TIMEOUT = 600_000;
+/** Choosing a payee is a quick decision with no transfer in between. */
+const PAYEE_TIMEOUT = 120_000;
+
+const SLIP_FIELD = "slip";
+const NOT_AN_IMAGE = "❌ Please upload a valid image file (JPG/PNG).";
 
 const SLIP_FRESHNESS_NOTE =
     "> ⚠️ Payment slips must be uploaded within **30 minutes** of making the transfer.";
@@ -28,14 +47,27 @@ const SLIP_FRESHNESS_NOTE =
  */
 interface PayeeCluster {
     key: string;
+    /** The group owner being paid. A cluster is keyed by them, so they are the payee. */
+    ownerId: string;
+    /** Their guild display name, resolved separately; "" when it could not be looked up. */
+    ownerName: string;
     method: string;
     account: string;
     bills: BillResponse[];
     groups: Map<number, GroupResponse>;
 }
 
+/**
+ * Strips everything but digits. Mirrors the backend's ExtractNumericCharacters,
+ * which uses unicode.IsDigit — hence \p{Nd} rather than a bare \D, so an account
+ * written with non-ASCII numerals clusters the same on both sides.
+ */
 function digitsOnly(account: string): string {
-    return (account || "").replace(/\D/g, "");
+    return (account || "").replace(/[^0-9\p{Nd}]/gu, "");
+}
+
+function isImage(file: Attachment): boolean {
+    return Boolean(file.contentType?.startsWith("image/"));
 }
 
 function clusterByPayee(
@@ -54,7 +86,15 @@ function clusterByPayee(
 
         let cluster = clusters.get(key);
         if (!cluster) {
-            cluster = { key, method, account, bills: [], groups: new Map() };
+            cluster = {
+                key,
+                ownerId: group.owner_discord_id,
+                ownerName: "",
+                method,
+                account,
+                bills: [],
+                groups: new Map(),
+            };
             clusters.set(key, cluster);
         }
         cluster.bills.push(bill);
@@ -68,8 +108,39 @@ function clusterTotal(cluster: PayeeCluster): number {
     return cluster.bills.reduce((sum, bill) => sum + bill.amount_due, 0);
 }
 
+function accountLabel(cluster: PayeeCluster): string {
+    // Bullets rather than asterisks: this label is embedded in **bold** text, and
+    // "****1234" collides with Discord's markdown, swallowing the mask.
+    return `${formatPaymentMethod(cluster.method)} ••••${maskAccount(cluster.account)}`;
+}
+
+/**
+ * A masked account on its own does not tell the payer who they are sending money
+ * to, so lead with the payee's name whenever it could be resolved.
+ */
 function payeeLabel(cluster: PayeeCluster): string {
-    return `${formatPaymentMethod(cluster.method)} ****${maskAccount(cluster.account)}`;
+    const account = accountLabel(cluster);
+    return cluster.ownerName ? `${cluster.ownerName} — ${account}` : account;
+}
+
+/**
+ * Fills in each cluster's payee name from the guild. Fetches only the owners
+ * involved rather than the whole membership, as the reminder service does.
+ * Best-effort: on failure the labels simply fall back to the account alone.
+ */
+async function attachOwnerNames(
+    interaction: ChatInputCommandInteraction,
+    clusters: PayeeCluster[]
+): Promise<void> {
+    const ownerIds = [...new Set(clusters.map((c) => c.ownerId))].filter(Boolean);
+    if (ownerIds.length === 0 || !interaction.guild) return;
+
+    const members = await interaction.guild.members.fetch({ user: ownerIds }).catch(() => null);
+    if (!members) return;
+
+    for (const cluster of clusters) {
+        cluster.ownerName = members.get(cluster.ownerId)?.displayName ?? "";
+    }
 }
 
 function currencyOf(bills: BillResponse[]): string {
@@ -107,11 +178,16 @@ function buildBillSelect(cluster: PayeeCluster, selected: Set<number>): ActionRo
     return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
 }
 
-function buildConfirmRow(disabled: boolean): ActionRowBuilder<ButtonBuilder> {
+/**
+ * The primary action opens the slip modal, so the whole payment happens in one
+ * interaction. A slip can only ever be supplied after bills are chosen, which is
+ * what keeps the selection from being skipped.
+ */
+function buildActionRow(disabled: boolean): ActionRowBuilder<ButtonBuilder> {
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
-            .setCustomId("confirm")
-            .setLabel("Confirm payment")
+            .setCustomId("pay")
+            .setLabel("Upload slip")
             .setStyle(ButtonStyle.Success)
             .setDisabled(disabled),
         new ButtonBuilder()
@@ -121,32 +197,37 @@ function buildConfirmRow(disabled: boolean): ActionRowBuilder<ButtonBuilder> {
     );
 }
 
-/**
- * "quote" totals the selection up so the user knows what to transfer; "pay"
- * settles it with the slip they already attached.
- */
-type Mode = "quote" | "pay";
+function buildSlipModal(modalId: string): ModalBuilder {
+    return new ModalBuilder()
+        .setCustomId(modalId)
+        .setTitle("Upload payment slip")
+        .addLabelComponents(
+            new LabelBuilder()
+                .setLabel("Payment slip")
+                .setDescription("JPG or PNG, from within the last 30 minutes")
+                .setFileUploadComponent(
+                    new FileUploadBuilder()
+                        .setCustomId(SLIP_FIELD)
+                        .setMinValues(1)
+                        .setMaxValues(1)
+                        .setRequired(true)
+                )
+        );
+}
 
 function selectionPrompt(
     cluster: PayeeCluster,
     selected: Set<number>,
-    truncated: boolean,
-    mode: Mode
+    truncated: boolean
 ): string {
-    let message =
-        mode === "pay"
-            ? `💸 **Paying ${payeeLabel(cluster)}**\n${SLIP_FRESHNESS_NOTE}\n\n`
-            : `🧮 **Bills owed to ${payeeLabel(cluster)}**\n\n`;
+    let message = `💸 **Paying ${payeeLabel(cluster)}**\n${SLIP_FRESHNESS_NOTE}\n\n`;
 
     if (truncated) {
         message += `> ℹ️ You have more than ${MAX_SELECT} bills to this account; only the first ${MAX_SELECT} are shown.\n\n`;
     }
 
     if (selected.size === 0) {
-        message +=
-            mode === "pay"
-                ? "Select the bills you want to pay with this slip."
-                : "Select the bills you want to pay to see what to transfer.";
+        message += "Select the bills you want to pay.";
         return message;
     }
 
@@ -160,14 +241,12 @@ function selectionPrompt(
         message += `> • ${groupName} — ${bill.amount_due} ${bill.currency}\n`;
     }
 
-    if (mode === "pay") {
-        message += `\n**Total: ${total} ${currency}** — your slip must be for at least this amount.`;
-        return message;
-    }
-
     message += `\n**Total: ${total} ${currency}**\n\n`;
-    message += `Transfer **${total} ${currency}** to **${formatPaymentMethod(cluster.method)} \`${cluster.account}\`**, `;
-    message += `then run \`/bill payall\` again with your slip attached and select these same bills.`;
+
+    const payeeName = cluster.ownerName ? `**${cluster.ownerName}** ` : "";
+    message += `Transfer **${total} ${currency}** to ${payeeName}`;
+    message += `on **${formatPaymentMethod(cluster.method)} \`${cluster.account}\`**, `;
+    message += "then press **Upload slip** to finish.";
 
     return message;
 }
@@ -184,7 +263,7 @@ function buildResultMessage(
     payerId: string
 ): string {
     let message = `✅ **Payment Verified — ${res.bills.length} bill${res.bills.length === 1 ? "" : "s"} settled**\n`;
-    message += `Paid by <@${payerId}> to ${payeeLabel(cluster)}\n\n`;
+    message += `Paid by <@${payerId}> to <@${cluster.ownerId}> (${accountLabel(cluster)})\n\n`;
 
     for (const bill of res.bills) {
         const groupName = cluster.groups.get(bill.group_id)?.name ?? `Group #${bill.group_id}`;
@@ -225,7 +304,8 @@ async function pickCluster(
                     .setLabel(truncate(payeeLabel(cluster)))
                     .setDescription(
                         truncate(
-                            `${cluster.bills.length} bill(s) · ${clusterTotal(cluster)} ${currencyOf(cluster.bills)}`
+                            `${formatPaymentMethod(cluster.method)} ${cluster.account} · ` +
+                                `${cluster.bills.length} bill(s) · ${clusterTotal(cluster)} ${currencyOf(cluster.bills)}`
                         )
                     )
                     .setValue(cluster.key)
@@ -243,7 +323,7 @@ async function pickCluster(
         const choice = await response.awaitMessageComponent({
             filter: (i) => i.user.id === interaction.user.id,
             componentType: ComponentType.StringSelect,
-            time: STEP_TIMEOUT,
+            time: PAYEE_TIMEOUT,
         });
         await choice.deferUpdate();
         return clusters.find((c) => c.key === choice.values[0]) ?? null;
@@ -255,21 +335,91 @@ async function pickCluster(
     }
 }
 
+/**
+ * Opens the slip modal on the button interaction and waits for it. Returns null
+ * if the user dismissed it, let it expire, or picked a non-image — in every case
+ * the selection message is left intact so they can simply press the button again.
+ *
+ * The returned submit interaction carries a fresh 15-minute token, which is what
+ * the rest of the flow answers on: the original command's token is often nearly
+ * spent by the time someone gets back from their banking app.
+ */
+async function collectSlipViaModal(
+    button: ButtonInteraction
+): Promise<{ submit: ModalSubmitInteraction; slip: Attachment } | null> {
+    const modalId = `payall_slip:${button.id}`;
+    await button.showModal(buildSlipModal(modalId));
+
+    let submit: ModalSubmitInteraction;
+    try {
+        submit = await button.awaitModalSubmit({
+            time: MODAL_TIMEOUT,
+            filter: (m) => m.customId === modalId && m.user.id === button.user.id,
+        });
+    } catch {
+        return null;
+    }
+
+    const slip = submit.fields.getField(SLIP_FIELD, ComponentType.FileUpload).attachments.first();
+    if (!slip || !isImage(slip)) {
+        await submit.reply({ content: NOT_AN_IMAGE, flags: MessageFlags.Ephemeral }).catch(() => {});
+        return null;
+    }
+
+    await submit.deferUpdate();
+    return { submit, slip };
+}
+
+/** Where the outcome of a payment is written back to. */
+interface Responder {
+    edit(content: string): Promise<unknown>;
+    followUp(content: string): Promise<unknown>;
+}
+
+async function settle(
+    cluster: PayeeCluster,
+    billIds: number[],
+    slip: Attachment,
+    guildId: string,
+    payerId: string,
+    respond: Responder
+): Promise<void> {
+    let res: PayMultipleResponse;
+
+    // Only the payment call decides success or failure. Reporting is handled
+    // separately below: once the money is recorded, a failure to render the
+    // receipt must never be shown as a failed payment, or the user will pay
+    // twice.
+    try {
+        res = await backend.bill.PayMultiple({
+            user_id: payerId,
+            guild_id: guildId,
+            bill_ids: billIds,
+            proof_url: slip.url,
+        });
+    } catch (err: any) {
+        console.error("Pay All Error:", err);
+        const errorMessage = toUserMessage(
+            err,
+            PAYMENT_ERROR_RULES,
+            "❌ Failed to verify payment. Please try again later."
+        );
+        await respond.edit(`**Failed to submit payment.**\n> ${errorMessage}`).catch(() => {});
+        return;
+    }
+
+    // The selection flow was ephemeral and cannot be made public, so the receipt
+    // goes out as a separate public follow-up: the group owner needs to see it,
+    // and it serves as the payment log.
+    await respond.edit("✅ Payment verified — receipt posted below.").catch(() => {});
+    await respond
+        .followUp(buildResultMessage(res, cluster, slip.url, payerId))
+        .catch((err) => console.error("Pay All (receipt) Error:", err));
+}
+
 export async function executePayAll(interaction: ChatInputCommandInteraction) {
     const guildId = await requireGuild(interaction);
     if (!guildId) return;
-
-    // No slip means the user just wants the total, so they know what to transfer.
-    const slip = interaction.options.getAttachment("slip");
-    const mode: Mode = slip ? "pay" : "quote";
-
-    if (slip && !slip.contentType?.startsWith("image/")) {
-        await interaction.reply({
-            content: "❌ Please upload a valid image file (JPG/PNG).",
-            flags: MessageFlags.Ephemeral,
-        });
-        return;
-    }
 
     // The whole selection flow is ephemeral: only the payer needs to see it.
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -290,6 +440,7 @@ export async function executePayAll(interaction: ChatInputCommandInteraction) {
 
     const groupMap = await fetchGroupMap(bills.map((bill) => bill.group_id));
     const clusters = clusterByPayee(bills, groupMap);
+    await attachOwnerNames(interaction, clusters);
 
     if (clusters.length === 0) {
         await interaction.editReply({
@@ -304,24 +455,32 @@ export async function executePayAll(interaction: ChatInputCommandInteraction) {
     const truncated = cluster.bills.length > MAX_SELECT;
     const selected = new Set<number>();
 
-    // Quote mode has nothing to confirm — the running total is the whole point.
-    const rowsFor = (sel: Set<number>) =>
-        mode === "pay"
-            ? [buildBillSelect(cluster, sel), buildConfirmRow(sel.size === 0)]
-            : [buildBillSelect(cluster, sel)];
+    const rowsFor = (sel: Set<number>) => [
+        buildBillSelect(cluster, sel),
+        buildActionRow(sel.size === 0),
+    ];
 
     const message = await interaction.editReply({
-        content: selectionPrompt(cluster, selected, truncated, mode),
+        content: selectionPrompt(cluster, selected, truncated),
         components: rowsFor(selected),
     });
 
     // A collector rather than awaitMessageComponent: the user must be able to
-    // adjust their selection and watch the total before confirming.
-    const collector = message.createMessageComponentCollector({ time: STEP_TIMEOUT });
+    // adjust their selection and watch the total before paying.
+    const collector = message.createMessageComponentCollector({ time: SELECT_TIMEOUT });
+
+    // Guards against a second click while a modal is open or a payment is in
+    // flight, which would otherwise submit the same bills twice.
+    let busy = false;
 
     collector.on("collect", async (i) => {
         if (i.user.id !== interaction.user.id) {
             await i.reply({ content: "This isn't your payment.", flags: MessageFlags.Ephemeral });
+            return;
+        }
+
+        if (busy) {
+            await i.deferUpdate().catch(() => {});
             return;
         }
 
@@ -330,7 +489,7 @@ export async function executePayAll(interaction: ChatInputCommandInteraction) {
             for (const value of i.values) selected.add(Number(value));
 
             await i.update({
-                content: selectionPrompt(cluster, selected, truncated, mode),
+                content: selectionPrompt(cluster, selected, truncated),
                 components: rowsFor(selected),
             });
             return;
@@ -342,48 +501,43 @@ export async function executePayAll(interaction: ChatInputCommandInteraction) {
             return;
         }
 
-        if (i.customId === "confirm" && slip) {
-            collector.stop("confirm");
-            await i.update({ content: "⏳ **Verifying your slip...**", components: [] });
-
-            try {
-                const res = await backend.bill.PayMultiple({
-                    user_id: interaction.user.id,
-                    guild_id: guildId,
-                    bill_ids: [...selected],
-                    proof_url: slip.url,
-                });
-
-                // The selection flow was ephemeral and cannot be made public, so
-                // the receipt goes out as a separate public follow-up: the group
-                // owner needs to see it, and it serves as the payment log.
-                await interaction.editReply({ content: "✅ Payment verified — receipt posted below." });
-                await interaction.followUp({
-                    content: buildResultMessage(res, cluster, slip.url, interaction.user.id),
-                });
-            } catch (err: any) {
-                console.error("Pay All Error:", err);
-                const errorMessage = toUserMessage(
-                    err,
-                    PAYMENT_ERROR_RULES,
-                    "❌ Failed to verify payment. Please try again later."
-                );
-                await interaction.editReply({
-                    content: `**Failed to submit payment.**\n> ${errorMessage}`,
-                });
-            }
+        if (i.customId !== "pay" || !i.isButton() || selected.size === 0) {
+            await i.deferUpdate().catch(() => {});
+            return;
         }
+
+        const billIds = [...selected];
+        busy = true;
+
+        const collected = await collectSlipViaModal(i);
+        if (!collected) {
+            // Dismissed, expired or not an image — the selection is still on
+            // screen, so let them press the button again.
+            busy = false;
+            return;
+        }
+
+        collector.stop("done");
+        const { submit, slip } = collected;
+        await submit.editReply({ content: "⏳ **Verifying your slip...**", components: [] });
+        await settle(cluster, billIds, slip, guildId, interaction.user.id, {
+            edit: (content) => submit.editReply({ content, components: [] }),
+            followUp: (content) => submit.followUp({ content }),
+        });
     });
 
     collector.on("end", async (_collected, reason) => {
-        if (reason === "confirm" || reason === "cancel") return;
+        if (reason === "done" || reason === "cancel") return;
+        // A modal is still open or a payment is in flight; that path owns the
+        // message and will write the real outcome to it.
+        if (busy) return;
 
-        // In quote mode the totals are still worth reading, so leave them up and
-        // just retire the menu.
+        // Leave the totals up — they are still worth reading — and point at the
+        // recovery path in case the money has already been transferred.
         const content =
-            mode === "pay"
-                ? "⏳ Payment cancelled: you took too long to confirm."
-                : selectionPrompt(cluster, selected, truncated, "quote");
+            selectionPrompt(cluster, selected, truncated) +
+            "\n\n⏳ This payment timed out. Run `/bill payall` again to finish it — " +
+            "if you have already transferred, re-select these bills and upload the slip.";
 
         await interaction.editReply({ content, components: [] }).catch(() => {});
     });

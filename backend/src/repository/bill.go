@@ -107,7 +107,7 @@ func (r *billRepo) Create(ctx context.Context, b *models.Bill) error {
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 	`
 
-	_, err := r.db.ExecContext(ctx, q,
+	res, err := r.db.ExecContext(ctx, q,
 		b.GroupID,
 		b.GuildID,
 		b.MemberID,
@@ -124,8 +124,20 @@ func (r *billRepo) Create(ctx context.Context, b *models.Bill) error {
 		nullableTime(b.VerifiedAt),
 		nullableTime(b.RejectedAt),
 	)
+	if err != nil {
+		return err
+	}
 
-	return err
+	// Assign the generated id back, so callers that need to refer to the bill
+	// they just created (e.g. a balance-remaining bill) do not have to search
+	// for it afterwards.
+	id, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+	b.ID = int(id)
+
+	return nil
 }
 
 func (r *billRepo) Update(ctx context.Context, billId int, b *models.Bill) error {

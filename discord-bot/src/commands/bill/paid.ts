@@ -181,18 +181,18 @@ export async function executePaid(interaction: ChatInputCommandInteraction) {
     });
 
     try {
-        const paidBill = await backend.bill.Pay({
+        const res = await backend.bill.Pay({
             user_id: interaction.user.id,
             guild_id: guildId,
             bill_id: billIdNum,
             proof_url: slip.url,
         });
 
+        const paidBill = res.bill;
         const groupName = await fetchGroupName(paidBill.group_id);
-        const remainingBill = await findRemainingBill(interaction.user.id, guildId, paidBill);
 
         await interaction.editReply({
-            content: buildPaymentResultMessage(paidBill, groupName, remainingBill, slip.url),
+            content: buildPaymentResultMessage(paidBill, groupName, res.remaining_bill ?? null, slip.url),
         });
     } catch (err: any) {
         console.error("Payment Submission Error:", err);
@@ -218,28 +218,5 @@ async function fetchGroupName(groupId: number): Promise<string> {
     } catch (err) {
         console.error("Failed to fetch group info:", err);
         return "Unknown Group";
-    }
-}
-
-/** Finds a newly-created bill for the same period (underpayment); never throws. */
-async function findRemainingBill(
-    userId: string,
-    guildId: string,
-    paidBill: BillResponse
-): Promise<BillResponse | null> {
-    try {
-        const unpaidBills = await backend.bill.GetUnpaidByUserAndGuild(userId, guildId);
-        return (
-            unpaidBills?.find(
-                (bill) =>
-                    bill.group_id === paidBill.group_id &&
-                    bill.month === paidBill.month &&
-                    bill.year === paidBill.year &&
-                    bill.id !== paidBill.id
-            ) ?? null
-        );
-    } catch (err) {
-        console.error("Failed to check for remaining bills:", err);
-        return null;
     }
 }
